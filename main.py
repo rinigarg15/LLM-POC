@@ -23,7 +23,7 @@ def initialize_index(yt_video_link: str):
     index_name = "index_"+ yt_video_link.split("?v=")[-1]
     index_location = "./askify_indexes/"+index_name
 
-    os.environ["OPENAI_API_KEY"] = "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"
+    os.environ["OPENAI_API_KEY"] = "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"
     openai.api_key = os.environ["OPENAI_API_KEY"]
 
     llm = OpenAI(model="gpt-3.5-turbo", temperature=0)
