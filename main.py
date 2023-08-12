@@ -8,6 +8,11 @@ from llama_index.response_synthesizers import get_response_synthesizer
 from llama_index.query_engine import RetrieverQueryEngine
 from llama_index.node_parser import SimpleNodeParser
 from llama_index.chat_engine.context import ContextChatEngine
+from llama_index.agent import OpenAIAgent
+from llama_index.tools import FunctionTool, QueryEngineTool
+from llama_index.tools.types import ToolMetadata
+from pydantic import BaseModel
+
 from llama_index import (
     VectorStoreIndex,
     ServiceContext,
@@ -22,9 +27,7 @@ app = FastAPI()
 def initialize_index(yt_video_link: str):
     index_name = "index_"+ yt_video_link.split("?v=")[-1]
     index_location = "./askify_indexes/"+index_name
-
-    os.environ["OPENAI_API_KEY"] = "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"
-    openai.api_key = os.environ["OPENAI_API_KEY"]
+    openai.api_key = os.getenv("OPENAI_API_KEY")
 
     llm = OpenAI(model="gpt-3.5-turbo", temperature=0)
     service_context = ServiceContext.from_defaults(llm=llm)
@@ -114,7 +117,9 @@ def get_QAKey(yt_video_link: str) -> str:
     response = query_engine.query(query_text)
     return str(response)
 
-def chat(yt_video_link: str):
+
+@app.get("/get_chat_engine", response_model=None)
+def get_chat_engine(yt_video_link: str):
     index = initialize_index(yt_video_link)
     retriever = VectorIndexRetriever(
         index=index, 
@@ -126,29 +131,5 @@ def chat(yt_video_link: str):
         If you don't find an answer within the context, SAY 'Sorry, I could not find the answer within the context.' \ 
         and DO NOT provide a generic response."""
     chat_engine = ContextChatEngine.from_defaults(verbose=True, system_prompt = system_prompt, retriever = retriever)
+    #contextChatEngineObject = contextChatEngine(context_chat_engine = chat_engine)
     return chat_engine
-
-def assess(_index):
-    retriever = VectorIndexRetriever(
-        index=_index, 
-        similarity_top_k=2,
-    )
-
-    system_prompt = f""" You are a friendly and helpful reviewer whose goal is to review answers to the questions you generate \
-        to help a student evaluate their understanding of the topic.
-        Plan each step ahead of time before moving on.
-        Perform the following actions: 
-            1 - Introduce yourself to the students and \
-                ask a meaningful question from the context information to assess the student's knowledge.
-            2 - Wait for a response.
-            3 - Assess the student's response in the context of the text provided only.\
-                Evaluate the response on each of the [parameters] and provide a line of feedback. 
-                [parameters]
-                - Does the response answer all sub questions in the question?
-                - Does the response answer all sub questions correctly?
-                - Is the answer elaborate enough or is it in need of more explanation?
-            4 - Continue these actions until the student types "Exit".
-        """
-    chat_engine = ContextChatEngine.from_defaults(verbose=True, system_prompt = system_prompt, retriever = retriever)
-    return chat_engine
-
