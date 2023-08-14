@@ -117,6 +117,8 @@ def get_QAKey(yt_video_link: str) -> str:
     response = query_engine.query(query_text)
     return str(response)
 
+class contextChatEngine(BaseModel):
+    chat_engine = ContextChatEngine
 
 @app.get("/get_chat_engine", response_model=None)
 def get_chat_engine(yt_video_link: str):
@@ -130,6 +132,91 @@ def get_chat_engine(yt_video_link: str):
         use ONLY the context information and no other sources to answer the question being asked.\
         If you don't find an answer within the context, SAY 'Sorry, I could not find the answer within the context.' \ 
         and DO NOT provide a generic response."""
-    chat_engine = ContextChatEngine.from_defaults(verbose=True, system_prompt = system_prompt, retriever = retriever)
-    #contextChatEngineObject = contextChatEngine(context_chat_engine = chat_engine)
-    return chat_engine
+    contextChatEngineObject = contextChatEngine()
+    contextChatEngineObject.chat_engine = ContextChatEngine.from_defaults(verbose=True, system_prompt = system_prompt, retriever = retriever)
+    return contextChatEngineObject
+
+@app.get("/chat")
+def chat(context_chat_engine: contextChatEngine, query: str) -> str:
+    return str(context_chat_engine.chat_engine.chat(query))
+
+assess_questions = []
+
+def get_assess_questions(yt_video_link: str) -> None:
+    global assess_questions
+    index = initialize_index(yt_video_link)
+    retriever = VectorIndexRetriever(index=index, similarity_top_k=len(index.docstore.docs))
+    response_synthesizer = get_response_synthesizer(response_mode='tree_summarize')
+    questions_engine = RetrieverQueryEngine(
+        retriever=retriever,
+        response_synthesizer=response_synthesizer,
+    )
+    query_text = f"""
+        Your goal is to identify a list of questions \
+        that can help a student ramp up on the topic explained in the context information ONLY\
+        Provide them in the form of a python list object.
+        """
+    query_response = questions_engine.query(query_text)
+    assess_questions = query_response.response.split(",")[::-1]
+
+def get_assess_question() -> str:
+    """Return the next question to ask the student"""
+    if assess_questions:
+        return assess_questions.pop()
+    else:
+        return "No more Questions left to ask. You can type 'exit' in the chatbox"
+    
+class openAIAgent(BaseModel):
+    openAI_Agent = OpenAIAgent
+
+@app.get("/get_assessment_agent", response_model=None)
+def get_openAIAgent(yt_video_link: str):
+    get_assess_questions(yt_video_link)
+    assess_question_tool = FunctionTool.from_defaults(fn=get_assess_question)
+
+    index = initialize_index(yt_video_link)
+    llm = OpenAI(model="gpt-3.5-turbo-0613")
+    retriever = VectorIndexRetriever(
+        index=index, 
+        similarity_top_k=2,
+    )
+    response_synthesizer = get_response_synthesizer(
+        response_mode="compact")
+    answers_engine = RetrieverQueryEngine(
+        retriever=retriever,
+        response_synthesizer=response_synthesizer,
+    )
+    generate_answer_tool = QueryEngineTool(
+        query_engine=answers_engine,
+        metadata=ToolMetadata(
+            name="generate_answer_tool",
+            description="Contains transcript of the youtube video with the link {yt_video_link} "
+            "Use a plain text question as input to the tool and return an answer.",
+        ),
+    )
+    tools = [assess_question_tool, generate_answer_tool]
+
+    system_prompt = f""" You are a friendly and helpful reviewer whose goal is to review answers to the questions you generate \
+        to help a student evaluate their understanding of the topic.
+        Plan each step ahead of time before moving on.
+        Perform the following actions: 
+            1 - Introduce yourself to the students.
+            2 - Ask a question from the assess_question tool ONLY.\
+            3 - Wait for a response.
+            4 - i) First generate your own response by \
+                calling the generate_answer_tool with the \
+                question from step 2 \
+                ii) Then compare your response with the student's response. \
+                and figure out the missing components(if any) in the student's answer \
+                Generate feedback from these missing components in the student's answer for the student.
+                Your feedback should not be more than 4 lines long. 
+                    
+            5 - Continue the actions from step 2 until the student types "Exit".
+        """
+    openAIAgentObject = openAIAgent()
+    openAIAgentObject.openAI_Agent = OpenAIAgent.from_tools(tools, llm=llm, system_prompt= system_prompt, verbose=True)
+    return openAIAgentObject
+
+@app.get("/chat")
+def agent_chat(openAIAgent: openAIAgent, query: str) -> str:
+    return str(openAIAgent.openAI_Agent.chat(query))
