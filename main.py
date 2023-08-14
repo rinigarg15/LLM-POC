@@ -1,7 +1,6 @@
 from fastapi import FastAPI
 import os
 import openai
-import streamlit as st
 from llama_index.llms import OpenAI
 from llama_index.retrievers import VectorIndexRetriever
 from llama_index.response_synthesizers import get_response_synthesizer
@@ -11,7 +10,7 @@ from llama_index.chat_engine.context import ContextChatEngine
 from llama_index.agent import OpenAIAgent
 from llama_index.tools import FunctionTool, QueryEngineTool
 from llama_index.tools.types import ToolMetadata
-from pydantic import BaseModel
+from pydantic import BaseConfig
 
 from llama_index import (
     VectorStoreIndex,
@@ -23,9 +22,11 @@ from llama_index import (
 )
 
 app = FastAPI()
+BaseConfig.arbitrary_types_allowed = True
+
 
 def initialize_index(yt_video_link: str):
-    index_name = "index_"+ yt_video_link.split("?v=")[-1]
+    index_name = "index_" + yt_video_link.split("?v=")[-1]
     index_location = "./askify_indexes/"+index_name
     openai.api_key = os.getenv("OPENAI_API_KEY")
 
@@ -51,11 +52,14 @@ def initialize_index(yt_video_link: str):
         index.storage_context.persist(persist_dir=index_location)
     return index
 
+
 @app.get("/get_transcript_summary")
 def get_transcript_summary(yt_video_link: str) -> str:
     index = initialize_index(yt_video_link)
-    retriever = VectorIndexRetriever(index=index, similarity_top_k=len(index.docstore.docs))
-    response_synthesizer = get_response_synthesizer(response_mode='tree_summarize')
+    retriever = VectorIndexRetriever(
+        index=index, similarity_top_k=len(index.docstore.docs))
+    response_synthesizer = get_response_synthesizer(
+        response_mode='tree_summarize')
 
     query_engine = RetrieverQueryEngine(
         retriever=retriever,
@@ -70,11 +74,14 @@ def get_transcript_summary(yt_video_link: str) -> str:
     response = query_engine.query(query_text)
     return str(response)
 
+
 @app.get("/get_flash_cards")
 def get_flash_cards(yt_video_link: str) -> str:
     index = initialize_index(yt_video_link)
-    retriever = VectorIndexRetriever(index=index, similarity_top_k=len(index.docstore.docs))
-    response_synthesizer = get_response_synthesizer(response_mode='tree_summarize')
+    retriever = VectorIndexRetriever(
+        index=index, similarity_top_k=len(index.docstore.docs))
+    response_synthesizer = get_response_synthesizer(
+        response_mode='tree_summarize')
 
     query_engine = RetrieverQueryEngine(
         retriever=retriever,
@@ -90,11 +97,14 @@ def get_flash_cards(yt_video_link: str) -> str:
     response = query_engine.query(query_text)
     return str(response)
 
+
 @app.get("/get_QAKey")
 def get_QAKey(yt_video_link: str) -> str:
     index = initialize_index(yt_video_link)
-    retriever = VectorIndexRetriever(index=index, similarity_top_k=len(index.docstore.docs))
-    response_synthesizer = get_response_synthesizer(response_mode='tree_summarize')
+    retriever = VectorIndexRetriever(
+        index=index, similarity_top_k=len(index.docstore.docs))
+    response_synthesizer = get_response_synthesizer(
+        response_mode='tree_summarize')
 
     query_engine = RetrieverQueryEngine(
         retriever=retriever,
@@ -117,14 +127,12 @@ def get_QAKey(yt_video_link: str) -> str:
     response = query_engine.query(query_text)
     return str(response)
 
-class contextChatEngine(BaseModel):
-    chat_engine = ContextChatEngine
 
 @app.get("/get_chat_engine", response_model=None)
 def get_chat_engine(yt_video_link: str):
     index = initialize_index(yt_video_link)
     retriever = VectorIndexRetriever(
-        index=index, 
+        index=index,
         similarity_top_k=2,
     )
 
@@ -132,21 +140,26 @@ def get_chat_engine(yt_video_link: str):
         use ONLY the context information and no other sources to answer the question being asked.\
         If you don't find an answer within the context, SAY 'Sorry, I could not find the answer within the context.' \ 
         and DO NOT provide a generic response."""
-    contextChatEngineObject = contextChatEngine()
-    contextChatEngineObject.chat_engine = ContextChatEngine.from_defaults(verbose=True, system_prompt = system_prompt, retriever = retriever)
-    return contextChatEngineObject
+    chat_engine = ContextChatEngine.from_defaults(
+        verbose=True, system_prompt=system_prompt, retriever=retriever)
+    return chat_engine
+
 
 @app.get("/chat")
-def chat(context_chat_engine: contextChatEngine, query: str) -> str:
-    return str(context_chat_engine.chat_engine.chat(query))
+def chat(chat_engine: ContextChatEngine, query: str) -> str:
+    return str(chat_engine.chat(query))
+
 
 assess_questions = []
+
 
 def get_assess_questions(yt_video_link: str) -> None:
     global assess_questions
     index = initialize_index(yt_video_link)
-    retriever = VectorIndexRetriever(index=index, similarity_top_k=len(index.docstore.docs))
-    response_synthesizer = get_response_synthesizer(response_mode='tree_summarize')
+    retriever = VectorIndexRetriever(
+        index=index, similarity_top_k=len(index.docstore.docs))
+    response_synthesizer = get_response_synthesizer(
+        response_mode='tree_summarize')
     questions_engine = RetrieverQueryEngine(
         retriever=retriever,
         response_synthesizer=response_synthesizer,
@@ -159,15 +172,14 @@ def get_assess_questions(yt_video_link: str) -> None:
     query_response = questions_engine.query(query_text)
     assess_questions = query_response.response.split(",")[::-1]
 
+
 def get_assess_question() -> str:
     """Return the next question to ask the student"""
     if assess_questions:
         return assess_questions.pop()
     else:
         return "No more Questions left to ask. You can type 'exit' in the chatbox"
-    
-class openAIAgent(BaseModel):
-    openAI_Agent = OpenAIAgent
+
 
 @app.get("/get_assessment_agent", response_model=None)
 def get_openAIAgent(yt_video_link: str):
@@ -177,7 +189,7 @@ def get_openAIAgent(yt_video_link: str):
     index = initialize_index(yt_video_link)
     llm = OpenAI(model="gpt-3.5-turbo-0613")
     retriever = VectorIndexRetriever(
-        index=index, 
+        index=index,
         similarity_top_k=2,
     )
     response_synthesizer = get_response_synthesizer(
@@ -201,7 +213,7 @@ def get_openAIAgent(yt_video_link: str):
         Plan each step ahead of time before moving on.
         Perform the following actions: 
             1 - Introduce yourself to the students.
-            2 - Ask a question from the assess_question tool ONLY.\
+            2 - Ask a question from the assess_question tool ONLY.
             3 - Wait for a response.
             4 - i) First generate your own response by \
                 calling the generate_answer_tool with the \
@@ -213,10 +225,11 @@ def get_openAIAgent(yt_video_link: str):
                     
             5 - Continue the actions from step 2 until the student types "Exit".
         """
-    openAIAgentObject = openAIAgent()
-    openAIAgentObject.openAI_Agent = OpenAIAgent.from_tools(tools, llm=llm, system_prompt= system_prompt, verbose=True)
-    return openAIAgentObject
+    openAIAgent = OpenAIAgent.from_tools(
+        tools, llm=llm, system_prompt=system_prompt, verbose=True)
+    return openAIAgent
+
 
 @app.get("/chat")
-def agent_chat(openAIAgent: openAIAgent, query: str) -> str:
-    return str(openAIAgent.openAI_Agent.chat(query))
+def agent_chat(openAIAgent: OpenAIAgent, query: str) -> str:
+    return str(openAIAgent.chat(query))
