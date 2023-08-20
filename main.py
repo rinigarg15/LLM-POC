@@ -1,3 +1,4 @@
+from collections import defaultdict
 from fastapi import FastAPI
 import os
 import openai
@@ -55,6 +56,8 @@ def initialize_index(yt_video_link: str):
 
 @app.get("/get_transcript_summary")
 def get_transcript_summary(yt_video_link: str) -> str:
+    print("inside get_transcript_summary before index creation")
+
     index = initialize_index(yt_video_link)
     retriever = VectorIndexRetriever(
         index=index, similarity_top_k=len(index.docstore.docs))
@@ -65,6 +68,8 @@ def get_transcript_summary(yt_video_link: str) -> str:
         retriever=retriever,
         response_synthesizer=response_synthesizer,
     )
+
+    print("inside get_transcript_summary index created")
     query_text = f"""
         You are an upbeat and friendly tutor with an encouraging tone.\
         Provide Key Insights from the context information ONLY.
@@ -72,6 +77,7 @@ def get_transcript_summary(yt_video_link: str) -> str:
         Use no more than 500 words in your summary.
     """
     response = query_engine.query(query_text)
+    print(response)
     return str(response)
 
 
@@ -150,11 +156,10 @@ def chat(chat_engine: ContextChatEngine, query: str) -> str:
     return str(chat_engine.chat(query))
 
 
-assess_questions = []
+assess_questions = defaultdict(list)
 
 
 def get_assess_questions(yt_video_link: str) -> None:
-    global assess_questions
     index = initialize_index(yt_video_link)
     retriever = VectorIndexRetriever(
         index=index, similarity_top_k=len(index.docstore.docs))
@@ -170,13 +175,15 @@ def get_assess_questions(yt_video_link: str) -> None:
         Provide them in the form of a python list object.
         """
     query_response = questions_engine.query(query_text)
-    assess_questions = query_response.response.split(",")[::-1]
+    assess_questions[yt_video_link.split(
+        "?v=")[-1]] = query_response.response.split(",")[::-1]
 
 
-def get_assess_question() -> str:
+def get_assess_question(yt_video_link: str) -> str:
     """Return the next question to ask the student"""
-    if assess_questions:
-        return assess_questions.pop()
+    video_id = yt_video_link.split("?v=")[-1]
+    if video_id in assess_questions and assess_questions[video_id]:
+        return assess_questions[video_id].pop()
     else:
         return "No more Questions left to ask. You can type 'exit' in the chatbox"
 
@@ -208,21 +215,20 @@ def get_openAIAgent(yt_video_link: str):
     )
     tools = [assess_question_tool, generate_answer_tool]
 
-    system_prompt = f""" You are a friendly and helpful reviewer whose goal is to review answers to the questions you generate \
-        to help a student evaluate their understanding of the topic.
+    system_prompt = f""" You are a friendly and helpful reviewer whose goal is to review a student's answers to the questions you generate \
+        to help them evaluate their understanding of the topic.
         Plan each step ahead of time before moving on.
         Perform the following actions: 
             1 - Introduce yourself to the students.
-            2 - Ask a question from the assess_question tool ONLY.
+            2 - Ask a question from the assess_question tool ONLY by passing in the {yt_video_link} as the funciton param.
             3 - Wait for a response.
             4 - i) First generate your own response by \
                 calling the generate_answer_tool with the \
-                question from step 2 \
-                ii) Then compare your response with the student's response. \
-                and figure out the missing components(if any) in the student's answer \
-                Generate feedback from these missing components in the student's answer for the student.
+                question from step 2. \
+                ii) Then compare your response with the student's response \
+                and figure out the missing components(if any) in the student's response. \
+                Generate feedback for the student from these missing components in the student's response.
                 Your feedback should not be more than 4 lines long. 
-                    
             5 - Continue the actions from step 2 until the student types "Exit".
         """
     openAIAgent = OpenAIAgent.from_tools(
@@ -230,6 +236,6 @@ def get_openAIAgent(yt_video_link: str):
     return openAIAgent
 
 
-@app.get("/chat")
+@app.get("/agent_chat")
 def agent_chat(openAIAgent: OpenAIAgent, query: str) -> str:
     return str(openAIAgent.chat(query))
