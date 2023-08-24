@@ -1,18 +1,17 @@
-from collections import defaultdict
 from fastapi import FastAPI
 import os
 import openai
-from llama_index.llms import OpenAI
+from llama_index.llms.openai import OpenAI
+from llama_index.llms.base import ChatMessage
 from llama_index.retrievers import VectorIndexRetriever
 from llama_index.response_synthesizers import get_response_synthesizer
 from llama_index.query_engine import RetrieverQueryEngine
 from llama_index.node_parser import SimpleNodeParser
 from llama_index.chat_engine.context import ContextChatEngine
-from llama_index.agent import OpenAIAgent
-from llama_index.tools import FunctionTool, QueryEngineTool
-from llama_index.tools.types import ToolMetadata
-from pydantic import BaseConfig
-
+from pydantic import BaseConfig, BaseModel
+from llama_index.text_splitter import TokenTextSplitter
+from llama_index.program.openai_program import OpenAIPydanticProgram
+from typing import List
 from llama_index import (
     VectorStoreIndex,
     ServiceContext,
@@ -45,7 +44,7 @@ def initialize_index(yt_video_link: str):
         loader = YoutubeTranscriptReader()
         documents = loader.load_data(ytlinks=[yt_video_link])
 
-        node_parser = SimpleNodeParser()
+        node_parser = SimpleNodeParser(text_splitter=TokenTextSplitter())
         nodes = node_parser.get_nodes_from_documents(documents)
 
         index = VectorStoreIndex(nodes, service_context=service_context)
@@ -56,7 +55,6 @@ def initialize_index(yt_video_link: str):
 
 @app.get("/get_transcript_summary")
 def get_transcript_summary(yt_video_link: str) -> str:
-    print("inside get_transcript_summary before index creation")
 
     index = initialize_index(yt_video_link)
     retriever = VectorIndexRetriever(
@@ -69,7 +67,6 @@ def get_transcript_summary(yt_video_link: str) -> str:
         response_synthesizer=response_synthesizer,
     )
 
-    print("inside get_transcript_summary index created")
     query_text = f"""
         You are an upbeat and friendly tutor with an encouraging tone.\
         Provide Key Insights from the context information ONLY.
@@ -77,7 +74,6 @@ def get_transcript_summary(yt_video_link: str) -> str:
         Use no more than 500 words in your summary.
     """
     response = query_engine.query(query_text)
-    print(response)
     return str(response)
 
 
@@ -156,86 +152,73 @@ def chat(chat_engine: ContextChatEngine, query: str) -> str:
     return str(chat_engine.chat(query))
 
 
-assess_questions = defaultdict(list)
+class QAPair(BaseModel):
+    """A question-answer pair."""
+    question: str
+    answer: str
 
 
-def get_assess_questions(yt_video_link: str) -> None:
+class QAList(BaseModel):
+    """A list of QAPairs."""
+    questions_answers_list: List[QAPair]
+
+
+@app.get("/get_assess_questions")
+def get_assess_questions(yt_video_link: str) -> List[QAPair]:
     index = initialize_index(yt_video_link)
-    retriever = VectorIndexRetriever(
-        index=index, similarity_top_k=len(index.docstore.docs))
-    response_synthesizer = get_response_synthesizer(
-        response_mode='tree_summarize')
-    questions_engine = RetrieverQueryEngine(
-        retriever=retriever,
-        response_synthesizer=response_synthesizer,
-    )
-    query_text = f"""
-        Your goal is to identify a list of questions \
-        that can help a student ramp up on the topic explained in the context information ONLY\
-        Provide them in the form of a python list object.
-        """
-    query_response = questions_engine.query(query_text)
-    assess_questions[yt_video_link.split(
-        "?v=")[-1]] = query_response.response.split(",")[::-1]
+    prompt = """{transcript}
+    --------------
+    Your goal is to identify a QAList of QAPairs\
+    that can help a student ramp up on the topic explained in the transcript ONLY.\
+    Keep the answer inside the QAPairs as descriptive as possible."""
 
-
-def get_assess_question(yt_video_link: str) -> str:
-    """Return the next question to ask the student"""
-    video_id = yt_video_link.split("?v=")[-1]
-    if video_id in assess_questions and assess_questions[video_id]:
-        return assess_questions[video_id].pop()
-    else:
-        return "No more Questions left to ask. You can type 'exit' in the chatbox"
-
-
-@app.get("/get_assessment_agent", response_model=None)
-def get_openAIAgent(yt_video_link: str):
-    get_assess_questions(yt_video_link)
-    assess_question_tool = FunctionTool.from_defaults(fn=get_assess_question)
-
-    index = initialize_index(yt_video_link)
     llm = OpenAI(model="gpt-3.5-turbo-0613")
-    retriever = VectorIndexRetriever(
-        index=index,
-        similarity_top_k=2,
+    program = OpenAIPydanticProgram.from_defaults(
+        output_cls=QAList,
+        prompt_template_str=prompt,
+        llm=llm,
     )
-    response_synthesizer = get_response_synthesizer(
-        response_mode="compact")
-    answers_engine = RetrieverQueryEngine(
-        retriever=retriever,
-        response_synthesizer=response_synthesizer,
-    )
-    generate_answer_tool = QueryEngineTool(
-        query_engine=answers_engine,
-        metadata=ToolMetadata(
-            name="generate_answer_tool",
-            description="Contains transcript of the youtube video with the link {yt_video_link} "
-            "Use a plain text question as input to the tool and return an answer.",
-        ),
-    )
-    tools = [assess_question_tool, generate_answer_tool]
+    nodes = index.docstore.docs
 
-    system_prompt = f""" You are a friendly and helpful reviewer whose goal is to review a student's answers to the questions you generate \
-        to help them evaluate their understanding of the topic.
-        Plan each step ahead of time before moving on.
-        Perform the following actions: 
-            1 - Introduce yourself to the students.
-            2 - Ask a question from the assess_question tool ONLY by passing in the {yt_video_link} as the funciton param.
-            3 - Wait for a response.
-            4 - i) First generate your own response by \
-                calling the generate_answer_tool with the \
-                question from step 2. \
-                ii) Then compare your response with the student's response \
-                and figure out the missing components(if any) in the student's response. \
-                Generate feedback for the student from these missing components in the student's response.
-                Your feedback should not be more than 4 lines long. 
-            5 - Continue the actions from step 2 until the student types "Exit".
-        """
-    openAIAgent = OpenAIAgent.from_tools(
-        tools, llm=llm, system_prompt=system_prompt, verbose=True)
-    return openAIAgent
+    total_list = []
+    for key, node in nodes.items():
+        try:
+            response = program(transcript=node.text)
+            total_list.extend(response.questions_answers_list)
+        except:
+            print("Failed to parse questions from node at index ", key)
+    return total_list
 
 
-@app.get("/agent_chat")
-def agent_chat(openAIAgent: OpenAIAgent, query: str) -> str:
-    return str(openAIAgent.chat(query))
+@app.get("/get_assessment")
+def get_assessment(question: str, answer: str, student_answer: str) -> str:
+    prompt = f"""
+        question: {question}
+        correct_answer: {answer}
+        students_answer: {student_answer}
+
+        You are a friendly and helpful reviewer who has been the given the correct_answer\
+        and a students_answer to a question. Your goal is to review the students_answer to the question \
+        by comparing it with the correct_answer and generate appropriate feedback.
+
+        Perform the following actions :-
+            1) Check if the students_answer is correct by comparing it with ONLY the correct_answer.\
+                You can use ONLY question for context information.
+
+            2) If the students_answer is correct, figure out the [missing components](if any) in the students_answer \
+                by comparing it with ONLY the correct_answer. Use ONLY question for context information.
+
+            3) If there are any[missing components], generate feedback for the student from these missing components.
+
+            Use the following format for your final output:
+
+            Correct: <Yes or No or Partially Correct>
+
+            Feedback: <Feedback>
+
+            Correct Answer: <correct_answer>     
+    """
+    openAI = OpenAI(temperature=0)
+    messages = [ChatMessage(content=prompt)]
+    response = openAI.chat(messages)
+    return response.raw.choices[0].message["content"]

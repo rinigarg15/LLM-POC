@@ -105,10 +105,10 @@ jupyterlab-widgets==3.0.7
 jupyterlab_server==2.22.1
 kaggle==1.5.13
 kiwisolver==1.4.4
-langchain==0.0.231
+langchain==0.0.266
 langchainplus-sdk==0.0.20
-llama-hub==0.0.3
-llama-index==0.7.17
+llama-hub==0.0.25
+llama-index==0.8.8
 loguru==0.7.0
 lxml==4.9.2
 lz4==4.3.2
