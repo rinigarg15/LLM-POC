@@ -8,20 +8,22 @@ from assessment import generate_feedback, check_similarity
 from initialize_index import initialize_index
 from llama_index.chat_engine.context import ContextChatEngine
 from typing import List
+from flash_cards_helper import get_video_duration
+import math
 
 app = FastAPI()
 BaseConfig.arbitrary_types_allowed = True
 
 
-@app.get("/get_transcript_summary")
-def get_transcript_summary(yt_video_link: str) -> str:
+@app.get("/get_transcript_summary", response_model=None)
+def get_transcript_summary(yt_video_link: str):
 
     index = initialize_index(yt_video_link)
 
     retriever = VectorIndexRetriever(
         index=index, similarity_top_k=len(index.docstore.docs))
     response_synthesizer = get_response_synthesizer(
-        response_mode='tree_summarize')
+        response_mode='tree_summarize', use_async = True, streaming = True)
 
     query_engine = RetrieverQueryEngine(
         retriever=retriever,
@@ -35,33 +37,36 @@ def get_transcript_summary(yt_video_link: str) -> str:
         Use no more than 500 words in your summary.
     """
 
-    response = query_engine.query(query_text)
-    return str(response)
+    response_stream  = query_engine.query(query_text)
+    return response_stream
 
 
-@app.get("/get_flash_cards")
-def get_flash_cards(yt_video_link: str) -> str:
+@app.get("/get_flash_cards", response_model=None)
+def get_flash_cards(yt_video_link: str):
     index = initialize_index(yt_video_link)
 
     retriever = VectorIndexRetriever(
         index=index, similarity_top_k=len(index.docstore.docs))
     response_synthesizer = get_response_synthesizer(
-        response_mode='tree_summarize')
+        response_mode='tree_summarize', use_async = True, streaming = True)
 
     query_engine = RetrieverQueryEngine(
         retriever=retriever,
         response_synthesizer=response_synthesizer,
     )
+    video_duration = get_video_duration(yt_video_link)
+    flash_cards = math.ceil((video_duration / 60))*5
 
     query_text = f"""
         You are an expert in creating flash cards that will help students memorize important concepts.
         Use the concept of cloze deletion to create flash cards from the context information ONLY.\
         Each flash card will have a question and a brief answer that is not more than 5 words long. \
+        Label question as 'Front:' and answer as 'Back:' in your output.
+        Do not create more than {flash_cards} flash cards.
         """
 
-    response = query_engine.query(query_text)
-
-    return str(response)
+    response_stream  = query_engine.query(query_text)
+    return response_stream
 
 
 @app.get("/get_QAKey")
