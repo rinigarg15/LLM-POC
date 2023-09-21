@@ -1,21 +1,59 @@
 from fastapi import FastAPI
+import os
+import openai
+from llama_index.llms import OpenAI
+from llama_index.node_parser import SimpleNodeParser
+from llama_index.text_splitter import TokenTextSplitter
+from llama_index import (
+    VectorStoreIndex,
+    ServiceContext,
+    StorageContext,
+    set_global_service_context,
+    load_index_from_storage,
+)
+from llama_hub.youtube_transcript.base import YoutubeTranscriptReader
 from pydantic import BaseConfig
 from llama_index.retrievers import VectorIndexRetriever
 from llama_index.response_synthesizers import get_response_synthesizer
 from llama_index.query_engine import RetrieverQueryEngine
-from assess_questions import QAPair, set_assess_questions
+from assess_questions import get_assess_questions_per_node
 from assessment import generate_feedback, check_similarity
-from initialize_index import initialize_index
 from llama_index.chat_engine.context import ContextChatEngine
-from typing import List
 from flash_cards_helper import get_video_duration
+from fastapi.responses import StreamingResponse
 import math
 
 app = FastAPI()
 BaseConfig.arbitrary_types_allowed = True
 
+@app.get("/get_index", response_model=None)
+def initialize_index(yt_video_link: str):
+    openai.api_key = os.getenv("OPENAI_API_KEY")
 
-@app.get("/get_transcript_summary", response_model=None)
+    llm = OpenAI(model="gpt-3.5-turbo", temperature=0)
+    service_context = ServiceContext.from_defaults(llm=llm)
+    set_global_service_context(service_context=service_context)
+
+    index_name = "index_" + yt_video_link.split("?v=")[-1]
+    index_location = "./askify_indexes/"+index_name
+
+    if os.path.exists(index_location):
+        index = load_index_from_storage(
+            StorageContext.from_defaults(persist_dir=index_location), service_context=service_context
+        )
+    else:
+        loader = YoutubeTranscriptReader()
+        documents = loader.load_data(ytlinks=[yt_video_link])
+
+        node_parser = SimpleNodeParser(text_splitter=TokenTextSplitter())
+        nodes = node_parser.get_nodes_from_documents(documents)
+
+        index = VectorStoreIndex(nodes, service_context=service_context)
+
+        index.storage_context.persist(persist_dir=index_location)
+    return index
+
+@app.get("/get_transcript_summary")
 def get_transcript_summary(yt_video_link: str):
 
     index = initialize_index(yt_video_link)
@@ -38,10 +76,10 @@ def get_transcript_summary(yt_video_link: str):
     """
 
     response_stream  = query_engine.query(query_text)
-    return response_stream
+    return StreamingResponse(response_stream.response_gen)
 
 
-@app.get("/get_flash_cards", response_model=None)
+@app.get("/get_flash_cards")
 def get_flash_cards(yt_video_link: str):
     index = initialize_index(yt_video_link)
 
@@ -66,53 +104,42 @@ def get_flash_cards(yt_video_link: str):
         """
 
     response_stream  = query_engine.query(query_text)
-    return response_stream
+    return StreamingResponse(response_stream.response_gen)
 
 
 @app.get("/get_QAKey")
-def get_QAKey(yt_video_link: str) -> str:
-    qa_pairs = set_assess_questions(yt_video_link)
-    response = ""
-    for index, qa in enumerate(qa_pairs):
-        response += str(index+1) + ". " + qa.question + "\n"
-
-    response += "Answer Key: \n"
-
-    for index, qa in enumerate(qa_pairs):
-        response += str(index+1) + ". " + qa.answer + "\n"
-
-    return response
+def get_QAKey(node_text: str):
+    return get_assess_questions_per_node(node_text)
 
 
 @app.get("/get_chat_engine", response_model=None)
 def get_chat_engine(yt_video_link: str):
     index = initialize_index(yt_video_link)
+
     retriever = VectorIndexRetriever(
-        index=index,
+        index=index, 
         similarity_top_k=2,
     )
+    response_synthesizer = get_response_synthesizer(
+        response_mode='tree_summarize', use_async = True, streaming = True)
 
     system_prompt = f""" You are a friendly and helpful mentor whose task is to \ 
         use ONLY the context information and no other sources to answer the question being asked.\
         If you don't find an answer within the context, SAY 'Sorry, I could not find the answer within the context.' \ 
         and DO NOT provide a generic response."""
-    chat_engine = ContextChatEngine.from_defaults(
-        verbose=True, system_prompt=system_prompt, retriever=retriever)
+    
+    chat_engine = ContextChatEngine.from_defaults(system_prompt = system_prompt, retriever = retriever, response_synthesizer = response_synthesizer)
     return chat_engine
 
 
 @app.get("/chat")
-def chat(chat_engine: ContextChatEngine, query: str) -> str:
-    return str(chat_engine.chat(query))
-
-
-@app.get("/get_assess_questions")
-def get_assess_questions(yt_video_link: str) -> List[QAPair]:
-    return set_assess_questions(yt_video_link)
+def chat(chat_engine: ContextChatEngine, query: str):
+    response_stream = chat_engine.stream_chat(query)
+    return StreamingResponse(response_stream.response_gen)
 
 
 @app.get("/get_assessment")
-def get_assessment(question: str, correct_answer: str, student_answer: str) -> str:
+def get_assessment(question: str, correct_answer: str, student_answer: str):
     similarity_score = check_similarity(correct_answer, student_answer)
     full_response = {}
     score = similarity_score * 100
