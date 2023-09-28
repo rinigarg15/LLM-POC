@@ -52,20 +52,3 @@ def generate_feedback(correct_answer, student_answer, question):
     )
     response = program(correct_answer=correct_answer, student_answer=student_answer, question=question)
     return str(response.feedback)
-
-@app.get("/get_similarity_score_response")
-def get_full_response(correct_answer, student_answer):
-    similarity_score = check_similarity(correct_answer, student_answer)
-    full_response = {}
-    score = similarity_score * 100
-
-    if similarity_score <= 60:
-        full_response["Correct"] = "No " + "(" + str(score)+ "%)"
-    elif similarity_score > 60:
-        if similarity_score >= 90:
-            full_response["Correct"] = "Yes " + "(" + str(score)+ "%)"
-        else:
-            full_response["Correct"] = "Partially Correct " + "(" + str(score)+ "%)"
-            full_response["Feedback"] = str(generate_feedback(correct_answer, student_answer, st.session_state.curr_question))
-    full_response["Correct Answer"] =  correct_answer
-    return full_response

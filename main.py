@@ -1,3 +1,4 @@
+from collections import defaultdict
 from fastapi import FastAPI
 import os
 import openai
@@ -19,14 +20,15 @@ from llama_index.query_engine import RetrieverQueryEngine
 from assess_questions import get_assess_questions_per_node
 from assessment import generate_feedback, check_similarity
 from llama_index.chat_engine.context import ContextChatEngine
-from flash_cards_helper import get_video_duration
+from flash_cards_helper import extract_video_id, get_video_duration
 from fastapi.responses import StreamingResponse
 import math
 
 app = FastAPI()
 BaseConfig.arbitrary_types_allowed = True
+chat_engines_dict = {}
+nodes_text_dict = defaultdict(list)
 
-@app.get("/get_index", response_model=None)
 def initialize_index(yt_video_link: str):
     openai.api_key = os.getenv("OPENAI_API_KEY")
 
@@ -50,12 +52,17 @@ def initialize_index(yt_video_link: str):
 
         index = VectorStoreIndex(nodes, service_context=service_context)
 
+        video_id = extract_video_id(yt_video_link)
+        nodes = index.docstore.docs
+        node_text_list = list(node.text for node in nodes.values())
+        nodes_text_dict[video_id] = node_text_list 
+
         index.storage_context.persist(persist_dir=index_location)
+
     return index
 
 @app.get("/get_transcript_summary")
-def get_transcript_summary(yt_video_link: str):
-
+def get_transcript_summary(yt_video_link: str):        
     index = initialize_index(yt_video_link)
 
     retriever = VectorIndexRetriever(
@@ -106,14 +113,8 @@ def get_flash_cards(yt_video_link: str):
     response_stream  = query_engine.query(query_text)
     return StreamingResponse(response_stream.response_gen)
 
-
-@app.get("/get_QAKey")
-def get_QAKey(node_text: str):
-    return get_assess_questions_per_node(node_text)
-
-
-@app.get("/get_chat_engine", response_model=None)
-def get_chat_engine(yt_video_link: str):
+@app.post("/create_chat_engine", response_model=None)
+def create_chat_engine(yt_video_link: str, session_id: int):
     index = initialize_index(yt_video_link)
 
     retriever = VectorIndexRetriever(
@@ -129,14 +130,28 @@ def get_chat_engine(yt_video_link: str):
         and DO NOT provide a generic response."""
     
     chat_engine = ContextChatEngine.from_defaults(system_prompt = system_prompt, retriever = retriever, response_synthesizer = response_synthesizer)
-    return chat_engine
-
+    chat_engines_dict[session_id] = chat_engine
 
 @app.get("/chat")
-def chat(chat_engine: ContextChatEngine, query: str):
+def chat(query: str, session_id: int):
+    chat_engine = chat_engines_dict[session_id]
     response_stream = chat_engine.stream_chat(query)
+
     return StreamingResponse(response_stream.response_gen)
 
+@app.get("/num_nodes")
+def num_nodes(yt_video_link: str):
+    initialize_index(yt_video_link)
+    video_id = extract_video_id(yt_video_link)
+    node_texts_list = nodes_text_dict[video_id]
+
+    return len(node_texts_list)
+
+@app.get("/get_QAKey")
+def get_QAKey(node_number: int, yt_video_link: str):
+    video_id = extract_video_id(yt_video_link)
+    node_text = nodes_text_dict[video_id][node_number]
+    return get_assess_questions_per_node(node_text)
 
 @app.get("/get_assessment")
 def get_assessment(question: str, correct_answer: str, student_answer: str):
