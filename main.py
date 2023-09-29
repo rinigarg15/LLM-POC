@@ -114,7 +114,7 @@ def get_flash_cards(yt_video_link: str):
     return StreamingResponse(response_stream.response_gen)
 
 @app.post("/create_chat_engine", response_model=None)
-def create_chat_engine(yt_video_link: str, session_id: int):
+def create_chat_engine(yt_video_link: str, session_id: str):
     index = initialize_index(yt_video_link)
 
     retriever = VectorIndexRetriever(
@@ -133,7 +133,7 @@ def create_chat_engine(yt_video_link: str, session_id: int):
     chat_engines_dict[session_id] = chat_engine
 
 @app.get("/chat")
-def chat(query: str, session_id: int):
+def chat(query: str, session_id: str):
     chat_engine = chat_engines_dict[session_id]
     response_stream = chat_engine.stream_chat(query)
 
