@@ -1,4 +1,5 @@
 from collections import defaultdict
+import threading
 from fastapi import FastAPI
 import os
 import openai
@@ -28,6 +29,7 @@ app = FastAPI()
 BaseConfig.arbitrary_types_allowed = True
 chat_engines_dict = {}
 nodes_text_dict = defaultdict(list)
+nodes_text_dict_lock = threading.Lock()
 
 def initialize_index(yt_video_link: str):
     openai.api_key = os.getenv("OPENAI_API_KEY")
@@ -55,7 +57,8 @@ def initialize_index(yt_video_link: str):
         video_id = extract_video_id(yt_video_link)
         nodes = index.docstore.docs
         node_text_list = list(node.text for node in nodes.values())
-        nodes_text_dict[video_id] = node_text_list 
+        with nodes_text_dict_lock:
+            nodes_text_dict[video_id] = node_text_list
 
         index.storage_context.persist(persist_dir=index_location)
 
@@ -143,7 +146,8 @@ def chat(query: str, session_id: str):
 def num_nodes(yt_video_link: str):
     initialize_index(yt_video_link)
     video_id = extract_video_id(yt_video_link)
-    node_texts_list = nodes_text_dict[video_id]
+    with nodes_text_dict_lock:
+        node_texts_list = nodes_text_dict.get(video_id, [])
 
     return len(node_texts_list)
 
@@ -172,3 +176,44 @@ def get_assessment(question: str, correct_answer: str, student_answer: str):
             correct_answer, student_answer, question))
     full_response["Correct Answer"] = correct_answer
     return full_response
+
+@app.get("/get_key_ideas_from_transcript")
+def get_key_ideas_from_transcript(yt_video_link: str):
+    index = initialize_index(yt_video_link)
+
+    retriever = VectorIndexRetriever(
+        index=index, similarity_top_k=len(index.docstore.docs))
+    response_synthesizer = get_response_synthesizer(
+        response_mode='tree_summarize', use_async = True, streaming = True)
+
+    query_engine = RetrieverQueryEngine(
+        retriever=retriever,
+        response_synthesizer=response_synthesizer,
+    )
+
+    query_text = f"""
+        You are an upbeat and friendly tutor with an encouraging tone.\
+        Generate one Key Idea of the context information provided.
+        Use no more than 50 words for your Key Idea.
+    """
+
+    response_stream  = query_engine.query(query_text)
+    return StreamingResponse(response_stream.response_gen)
+
+@app.get("/generate_key_insight_with_summary")
+def generate_key_insight_with_summary(transcript: str):
+    llm = OpenAI(model="gpt-3.5-turbo", temperature=0) 
+    
+    prompt = f"""
+    " You are an upbeat and friendly tutor with an encouraging tone who has been provided context information below. \n"
+    "---------------------\n"
+    "{transcript}"
+    "\n---------------------\n"
+    "Using ONLY the context information and no other sources, perform the following actions:\n"
+    "First, generate one Key Idea from the context information ONLY.\n"
+    "Then elaborate your Key Idea in bullet points.\n"
+    "Do not generate more than 5 bullet points.\n"
+    """
+
+    response = llm.stream_complete(prompt)
+    return StreamingResponse(response)
