@@ -60,7 +60,7 @@ def initialize_index(yt_video_link: str):
 
     global nodes_text_dict
     nodes_text_dict[video_id] = node_text_list
-    
+
     return index
 
 @app.get("/get_transcript_summary")
@@ -159,7 +159,7 @@ def num_nodes(yt_video_link: str):
 def get_QAKey(node_number: int, yt_video_link: str):
     video_id = extract_video_id(yt_video_link)
     node_text = nodes_text_dict[video_id][node_number]
-    return get_assess_questions_per_node(node_text)
+    return StreamingResponse(get_assess_questions_per_node(node_text), media_type="application/json")
 
 @app.get("/get_assessment")
 def get_assessment(question: str, correct_answer: str, student_answer: str):

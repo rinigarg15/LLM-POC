@@ -1,3 +1,4 @@
+import json
 from llama_index.program.openai_program import OpenAIPydanticProgram
 from pydantic import BaseModel
 from llama_index.llms import OpenAI
@@ -23,4 +24,6 @@ def get_assess_questions_per_node(node_text):
     )
 
     response = program.stream_list(transcript=node_text)
-    return response
+    for r in response:
+        json_data = json.dumps({"question": r.question, "answer": r.answer})
+        yield json_data + "\n"
