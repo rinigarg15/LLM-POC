@@ -52,16 +52,15 @@ def initialize_index(yt_video_link: str):
         nodes = node_parser.get_nodes_from_documents(documents)
 
         index = VectorStoreIndex(nodes, service_context=service_context)
-    
-        video_id = extract_video_id(yt_video_link)
-        nodes = index.docstore.docs
-        node_text_list = list(node.text for node in nodes.values())
-
-        global nodes_text_dict
-        nodes_text_dict[video_id] = node_text_list
-
         index.storage_context.persist(persist_dir=index_location)
 
+    video_id = extract_video_id(yt_video_link)
+    nodes = index.docstore.docs
+    node_text_list = list(node.text for node in nodes.values())
+
+    global nodes_text_dict
+    nodes_text_dict[video_id] = node_text_list
+    
     return index
 
 @app.get("/get_transcript_summary")
@@ -118,6 +117,10 @@ def get_flash_cards(yt_video_link: str):
 
 @app.post("/create_chat_engine", response_model=None)
 def create_chat_engine(yt_video_link: str, session_id: str):
+    global chat_engines_dict
+    chat_engines_dict[session_id] = get_chat_engine(yt_video_link)
+
+def get_chat_engine(yt_video_link: str):
     index = initialize_index(yt_video_link)
 
     retriever = VectorIndexRetriever(
@@ -133,12 +136,13 @@ def create_chat_engine(yt_video_link: str, session_id: str):
         and DO NOT provide a generic response."""
     
     chat_engine = ContextChatEngine.from_defaults(system_prompt = system_prompt, retriever = retriever, response_synthesizer = response_synthesizer)
-    global chat_engines_dict
-    chat_engines_dict[session_id] = chat_engine
+    return chat_engine
 
 @app.get("/chat")
-def chat(query: str, session_id: str):
+def chat(query: str, session_id: str, yt_video_link: str):
     chat_engine = chat_engines_dict[session_id]
+    if not chat_engine:
+        chat_engine = get_chat_engine(yt_video_link)
     response_stream = chat_engine.stream_chat(query)
 
     return StreamingResponse(response_stream.response_gen)
