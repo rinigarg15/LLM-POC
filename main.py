@@ -117,10 +117,6 @@ def get_flash_cards(yt_video_link: str):
 
 @app.post("/create_chat_engine", response_model=None)
 def create_chat_engine(yt_video_link: str, session_id: str):
-    global chat_engines_dict
-    chat_engines_dict[session_id] = get_chat_engine(yt_video_link)
-
-def get_chat_engine(yt_video_link: str):
     index = initialize_index(yt_video_link)
 
     retriever = VectorIndexRetriever(
@@ -136,14 +132,13 @@ def get_chat_engine(yt_video_link: str):
         and DO NOT provide a generic response."""
     
     chat_engine = ContextChatEngine.from_defaults(system_prompt = system_prompt, retriever = retriever, response_synthesizer = response_synthesizer)
-    return chat_engine
+    global chat_engines_dict
+    chat_engines_dict[session_id] = chat_engine
 
 @app.get("/chat")
-def chat(query: str, session_id: str, yt_video_link: str):
+def chat(query: str, session_id: str):
     global chat_engines_dict
     chat_engine = chat_engines_dict[session_id]
-    if not chat_engine:
-        chat_engine = get_chat_engine(yt_video_link)
     response_stream = chat_engine.stream_chat(query)
 
     return StreamingResponse(response_stream.response_gen)
