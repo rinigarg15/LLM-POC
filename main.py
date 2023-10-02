@@ -140,6 +140,7 @@ def get_chat_engine(yt_video_link: str):
 
 @app.get("/chat")
 def chat(query: str, session_id: str, yt_video_link: str):
+    global chat_engines_dict
     chat_engine = chat_engines_dict[session_id]
     if not chat_engine:
         chat_engine = get_chat_engine(yt_video_link)
