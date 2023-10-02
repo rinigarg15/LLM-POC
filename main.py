@@ -29,7 +29,6 @@ app = FastAPI()
 BaseConfig.arbitrary_types_allowed = True
 chat_engines_dict = {}
 nodes_text_dict = defaultdict(list)
-nodes_text_dict_lock = threading.Lock()
 
 def initialize_index(yt_video_link: str):
     openai.api_key = os.getenv("OPENAI_API_KEY")
@@ -53,12 +52,13 @@ def initialize_index(yt_video_link: str):
         nodes = node_parser.get_nodes_from_documents(documents)
 
         index = VectorStoreIndex(nodes, service_context=service_context)
-
+    
         video_id = extract_video_id(yt_video_link)
         nodes = index.docstore.docs
         node_text_list = list(node.text for node in nodes.values())
-        with nodes_text_dict_lock:
-            nodes_text_dict[video_id] = node_text_list
+
+        global nodes_text_dict
+        nodes_text_dict[video_id] = node_text_list
 
         index.storage_context.persist(persist_dir=index_location)
 
@@ -133,6 +133,7 @@ def create_chat_engine(yt_video_link: str, session_id: str):
         and DO NOT provide a generic response."""
     
     chat_engine = ContextChatEngine.from_defaults(system_prompt = system_prompt, retriever = retriever, response_synthesizer = response_synthesizer)
+    global chat_engines_dict
     chat_engines_dict[session_id] = chat_engine
 
 @app.get("/chat")
@@ -146,8 +147,7 @@ def chat(query: str, session_id: str):
 def num_nodes(yt_video_link: str):
     initialize_index(yt_video_link)
     video_id = extract_video_id(yt_video_link)
-    with nodes_text_dict_lock:
-        node_texts_list = nodes_text_dict.get(video_id, [])
+    node_texts_list = nodes_text_dict.get(video_id, [])
 
     return len(node_texts_list)
 
