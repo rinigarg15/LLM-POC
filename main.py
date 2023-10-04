@@ -24,11 +24,11 @@ from llama_index.chat_engine.context import ContextChatEngine
 from flash_cards_helper import extract_video_id, get_video_duration
 from fastapi.responses import StreamingResponse
 import math
+from persistence import from_persist_path, persist_node_texts, DEFAULT_NODE_TEXT_LIST_KEY
 
 app = FastAPI()
 BaseConfig.arbitrary_types_allowed = True
 chat_engines_dict = {}
-nodes_text_dict = defaultdict(list)
 
 def initialize_index(yt_video_link: str):
     openai.api_key = os.getenv("OPENAI_API_KEY")
@@ -37,7 +37,7 @@ def initialize_index(yt_video_link: str):
     service_context = ServiceContext.from_defaults(llm=llm)
     set_global_service_context(service_context=service_context)
 
-    index_name = "index_" + yt_video_link.split("?v=")[-1]
+    index_name = "index_" + extract_video_id(yt_video_link)
     index_location = "./askify_indexes/"+index_name
 
     if os.path.exists(index_location):
@@ -54,13 +54,7 @@ def initialize_index(yt_video_link: str):
         index = VectorStoreIndex(nodes, service_context=service_context)
         index.storage_context.persist(persist_dir=index_location)
 
-    video_id = extract_video_id(yt_video_link)
-    nodes = index.docstore.docs
-    node_text_list = list(node.text for node in nodes.values())
-
-    global nodes_text_dict
-    nodes_text_dict[video_id] = node_text_list
-
+        persist_node_texts(yt_video_link, index)
     return index
 
 @app.get("/get_transcript_summary")
@@ -146,15 +140,13 @@ def chat(query: str, session_id: str):
 @app.get("/num_nodes")
 def num_nodes(yt_video_link: str):
     initialize_index(yt_video_link)
-    video_id = extract_video_id(yt_video_link)
-    node_texts_list = nodes_text_dict.get(video_id, [])
+    node_texts_list = from_persist_path(yt_video_link)[DEFAULT_NODE_TEXT_LIST_KEY]
 
     return len(node_texts_list)
 
 @app.get("/get_QAKey")
 def get_QAKey(node_number: int, yt_video_link: str):
-    video_id = extract_video_id(yt_video_link)
-    node_text = nodes_text_dict[video_id][node_number]
+    node_text = from_persist_path(yt_video_link)[DEFAULT_NODE_TEXT_LIST_KEY][node_number]
     return StreamingResponse(get_assess_questions_per_node(node_text), media_type="application/json")
 
 @app.get("/get_assessment")
