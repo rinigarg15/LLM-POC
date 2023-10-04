@@ -12,7 +12,7 @@ def persist(persist_path, data, fs: Optional[fsspec.AbstractFileSystem] = None )
     if not fs.exists(dirpath):
         fs.makedirs(dirpath)
 
-    with fs.open(persist_path, "w") as f:
+    with fs.open(persist_path, "a") as f:
         f.write(json.dumps(data))
 
 def persist_node_texts(yt_video_link: str, index):
