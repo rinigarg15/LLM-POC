@@ -25,6 +25,7 @@ from flash_cards_helper import extract_video_id, get_video_duration
 from fastapi.responses import StreamingResponse
 import math
 from persistence import from_persist_path, persist_node_texts, DEFAULT_NODE_TEXT_LIST_KEY
+from llama_index.llm_predictor.utils import stream_completion_response_to_tokens
 
 app = FastAPI()
 BaseConfig.arbitrary_types_allowed = True
@@ -208,4 +209,5 @@ def generate_key_insight_with_summary(transcript: str):
     """
 
     response = llm.stream_complete(prompt)
-    return StreamingResponse(response)
+    stream_tokens = stream_completion_response_to_tokens(response)
+    return StreamingResponse(stream_tokens)
