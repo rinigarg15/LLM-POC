@@ -86,6 +86,7 @@ def get_transcript_summary(yt_video_link: str, word_limit: Optional[int]):
         Provide Key Insights from the context information ONLY.
         For each key insight, provide relevant summary in the form of bullet points.
         Use no more than {word_limit} words in your summary.
+        Highlight the important words in bold.
     """
 
     response_stream  = query_engine.query(query_text)
@@ -204,6 +205,7 @@ def get_key_ideas_from_transcript(yt_video_link: str, word_limit: int):
         You are an upbeat and friendly tutor with an encouraging tone.\
         Generate one Key Idea of the context information provided.
         Use no more than {word_limit} words for your Key Idea.
+        Highlight the important words in bold.
     """
 
     response_stream  = query_engine.query(query_text)
@@ -223,6 +225,7 @@ def generate_key_insight_with_summary(transcript: str, word_limit: int):
     "Then elaborate your Key Idea in bullet points.\n"
     "Do not generate more than 5 bullet points.\n"
     "Do not generate more than {word_limit} words.\n"
+    "Highlight the important words in bold. \n"
     """
 
     response = llm.stream_complete(prompt)
