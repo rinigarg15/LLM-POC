@@ -30,6 +30,7 @@ from llama_index.llm_predictor.utils import stream_completion_response_to_tokens
 app = FastAPI()
 BaseConfig.arbitrary_types_allowed = True
 chat_engines_dict = {}
+chat_engines_dict_lock = threading.Lock()
 
 def initialize_index(yt_video_link: str):
     openai.api_key = os.getenv("OPENAI_API_KEY")
@@ -127,11 +128,15 @@ def create_chat_engine(yt_video_link: str, session_id: str):
         and DO NOT provide a generic response."""
     
     chat_engine = ContextChatEngine.from_defaults(system_prompt = system_prompt, retriever = retriever, response_synthesizer = response_synthesizer)
-    chat_engines_dict[session_id] = chat_engine
+    with chat_engines_dict_lock:
+        chat_engines_dict[session_id] = chat_engine
+
+    return {}
 
 @app.get("/chat")
 def chat(query: str, session_id: str):
-    chat_engine = chat_engines_dict[session_id]
+    with chat_engines_dict_lock:
+        chat_engine = chat_engines_dict[session_id]
     response_stream = chat_engine.stream_chat(query)
 
     return StreamingResponse(response_stream.response_gen)

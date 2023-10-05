@@ -25,7 +25,6 @@ def persist_node_texts(yt_video_link: str, index):
 def from_persist_path(yt_video_link: str, fs: Optional[fsspec.AbstractFileSystem] = None):
     video_id = extract_video_id(yt_video_link)
     persist_path= "./disk_data/"+video_id
-
     
     fs = fs or fsspec.filesystem("file")
     with fs.open(persist_path, "rb") as f:
