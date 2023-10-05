@@ -86,7 +86,7 @@ def get_transcript_summary(yt_video_link: str, word_limit: Optional[int]):
         Provide Key Insights from the context information ONLY.
         For each key insight, provide relevant summary in the form of bullet points.
         Use no more than {word_limit} words in your summary.
-        Highlight the important words in bold.
+        Highlight the important words in your summary in bold.
     """
 
     response_stream  = query_engine.query(query_text)
