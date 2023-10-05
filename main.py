@@ -127,12 +127,10 @@ def create_chat_engine(yt_video_link: str, session_id: str):
         and DO NOT provide a generic response."""
     
     chat_engine = ContextChatEngine.from_defaults(system_prompt = system_prompt, retriever = retriever, response_synthesizer = response_synthesizer)
-    global chat_engines_dict
     chat_engines_dict[session_id] = chat_engine
 
 @app.get("/chat")
 def chat(query: str, session_id: str):
-    global chat_engines_dict
     chat_engine = chat_engines_dict[session_id]
     response_stream = chat_engine.stream_chat(query)
 
