@@ -1,5 +1,6 @@
 from collections import defaultdict
 import threading
+from typing import Optional
 from fastapi import FastAPI
 import os
 import openai
@@ -29,7 +30,7 @@ from llama_index.llm_predictor.utils import stream_completion_response_to_tokens
 
 app = FastAPI()
 BaseConfig.arbitrary_types_allowed = True
-chat_engines_dict = {}
+app.chat_engines_dict = {}
 chat_engines_dict_lock = threading.Lock()
 
 def initialize_index(yt_video_link: str):
@@ -59,8 +60,13 @@ def initialize_index(yt_video_link: str):
         persist_node_texts(yt_video_link, index)
     return index
 
+def get_transcript_list(yt_video_link: str):
+    initialize_index(yt_video_link)
+    node_texts_list = from_persist_path(yt_video_link)[DEFAULT_NODE_TEXT_LIST_KEY]
+    return node_texts_list
+
 @app.get("/get_transcript_summary")
-def get_transcript_summary(yt_video_link: str):        
+def get_transcript_summary(yt_video_link: str, word_limit: Optional[int]):        
     index = initialize_index(yt_video_link)
 
     retriever = VectorIndexRetriever(
@@ -73,11 +79,13 @@ def get_transcript_summary(yt_video_link: str):
         response_synthesizer=response_synthesizer,
     )
 
+    word_limit = word_limit or 500
+
     query_text = f"""
         You are an upbeat and friendly tutor with an encouraging tone.\
         Provide Key Insights from the context information ONLY.
         For each key insight, provide relevant summary in the form of bullet points.
-        Use no more than 500 words in your summary.
+        Use no more than {word_limit} words in your summary.
     """
 
     response_stream  = query_engine.query(query_text)
@@ -129,24 +137,29 @@ def create_chat_engine(yt_video_link: str, session_id: str):
     
     chat_engine = ContextChatEngine.from_defaults(system_prompt = system_prompt, retriever = retriever, response_synthesizer = response_synthesizer)
     with chat_engines_dict_lock:
-        chat_engines_dict[session_id] = chat_engine
+        app.chat_engines_dict[session_id] = chat_engine
 
     return {}
 
 @app.get("/chat")
 def chat(query: str, session_id: str):
     with chat_engines_dict_lock:
-        chat_engine = chat_engines_dict[session_id]
+        chat_engine = app.chat_engines_dict[session_id]
     response_stream = chat_engine.stream_chat(query)
 
     return StreamingResponse(response_stream.response_gen)
 
 @app.get("/num_nodes")
 def num_nodes(yt_video_link: str):
-    initialize_index(yt_video_link)
-    node_texts_list = from_persist_path(yt_video_link)[DEFAULT_NODE_TEXT_LIST_KEY]
+    node_texts_list = get_transcript_list(yt_video_link)
 
     return len(node_texts_list)
+
+@app.get("/get_transcript")
+def get_transcript(yt_video_link: str):
+    node_texts_list = get_transcript_list(yt_video_link)
+
+    return node_texts_list
 
 @app.get("/get_QAKey")
 def get_QAKey(node_number: int, yt_video_link: str):
@@ -174,7 +187,7 @@ def get_assessment(question: str, correct_answer: str, student_answer: str):
     return full_response
 
 @app.get("/get_key_ideas_from_transcript")
-def get_key_ideas_from_transcript(yt_video_link: str):
+def get_key_ideas_from_transcript(yt_video_link: str, word_limit: int):
     index = initialize_index(yt_video_link)
 
     retriever = VectorIndexRetriever(
@@ -190,14 +203,14 @@ def get_key_ideas_from_transcript(yt_video_link: str):
     query_text = f"""
         You are an upbeat and friendly tutor with an encouraging tone.\
         Generate one Key Idea of the context information provided.
-        Use no more than 50 words for your Key Idea.
+        Use no more than {word_limit} words for your Key Idea.
     """
 
     response_stream  = query_engine.query(query_text)
     return StreamingResponse(response_stream.response_gen)
 
 @app.get("/generate_key_insight_with_summary")
-def generate_key_insight_with_summary(transcript: str):
+def generate_key_insight_with_summary(transcript: str, word_limit: int):
     llm = OpenAI(model="gpt-3.5-turbo", temperature=0) 
     
     prompt = f"""
@@ -209,6 +222,7 @@ def generate_key_insight_with_summary(transcript: str):
     "First, generate one Key Idea from the context information ONLY.\n"
     "Then elaborate your Key Idea in bullet points.\n"
     "Do not generate more than 5 bullet points.\n"
+    "Do not generate more than {word_limit} words.\n"
     """
 
     response = llm.stream_complete(prompt)
