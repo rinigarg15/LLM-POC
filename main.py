@@ -1,7 +1,6 @@
-from collections import defaultdict
 import threading
 from typing import Optional
-from fastapi import FastAPI
+from fastapi import FastAPI, Depends
 import os
 import openai
 from llama_index.llms import OpenAI
@@ -30,11 +29,18 @@ from llama_index.llm_predictor.utils import stream_completion_response_to_tokens
 
 app = FastAPI()
 BaseConfig.arbitrary_types_allowed = True
-chat_engines_dict_lock = threading.Lock()
 
 class ChatEnginesDict:
-    def __init__(self):
-        self.chat_engines_dict = {}
+    _instance = None
+
+    def __new__(cls):
+        if cls._instance is None:
+            cls._instance = super(ChatEnginesDict, cls).__new__(cls)
+            cls._instance.chat_engines_dict = {}
+        return cls._instance
+
+    def add(self, session_id, context_chat_engine):
+        self.chat_engines_dict[session_id] = context_chat_engine
 
 chat_engines_dict_object = ChatEnginesDict()
 
@@ -126,7 +132,7 @@ def get_flash_cards(yt_video_link: str):
     return StreamingResponse(response_stream.response_gen)
 
 @app.post("/create_chat_engine", response_model=None)
-def create_chat_engine(yt_video_link: str, session_id: str):
+def create_chat_engine(yt_video_link: str, session_id: str, chat_engines_dict_object : ChatEnginesDict = Depends()):
     index = initialize_index(yt_video_link)
 
     retriever = VectorIndexRetriever(
@@ -142,15 +148,12 @@ def create_chat_engine(yt_video_link: str, session_id: str):
         and DO NOT provide a generic response."""
     
     chat_engine = ContextChatEngine.from_defaults(system_prompt = system_prompt, retriever = retriever, response_synthesizer = response_synthesizer)
-    with chat_engines_dict_lock:
-        chat_engines_dict_object.chat_engines_dict[session_id] = chat_engine
-
+    chat_engines_dict_object.add(session_id, chat_engine)
     return {}
 
 @app.get("/chat")
-def chat(query: str, session_id: str):
-    with chat_engines_dict_lock:
-        chat_engine = chat_engines_dict_object.chat_engines_dict[session_id]
+def chat(query: str, session_id: str, chat_engines_dict_object : ChatEnginesDict = Depends()):
+    chat_engine = chat_engines_dict_object.chat_engines_dict[session_id]
     response_stream = chat_engine.stream_chat(query)
 
     return StreamingResponse(response_stream.response_gen)

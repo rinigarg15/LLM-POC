@@ -1,3 +1,5 @@
 
 .DS_Store
 *.pyc
+disk_data/
+askify_indexes/
