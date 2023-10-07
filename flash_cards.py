@@ -4,7 +4,7 @@ from pydantic import BaseModel
 from llama_index.llms import OpenAI
 
 class FlashCard(BaseModel):
-    """A question-answer pair."""
+    """A Flash-Card."""
     front: str
     back: str
 
@@ -14,7 +14,7 @@ def get_flash_cards_per_node(node_text, flash_cards):
     --------------
     Your goal is to identify FlashCards\
     that can help students memorize important concepts.
-    Use the concept of cloze deletion to create flash cards from the transcript ONLY.\
+    Use the concept of cloze deletion to create FlashCards from the transcript ONLY.\
     Each flash card will have a question and a brief answer that is not more than 5 words long. 
     Do not create more than {flash_cards} flash cards.
     """
