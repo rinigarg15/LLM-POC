@@ -21,11 +21,14 @@ from llama_index.query_engine import RetrieverQueryEngine
 from assess_questions import get_assess_questions_per_node
 from assessment import generate_feedback, check_similarity
 from llama_index.chat_engine.context import ContextChatEngine
-from flash_cards_helper import extract_video_id, get_video_duration
+from flash_cards import get_flash_cards_per_node
+from video_helper import extract_video_id
 from fastapi.responses import StreamingResponse
 import math
 from persistence import from_persist_path, persist_node_texts, DEFAULT_NODE_TEXT_LIST_KEY
 from llama_index.llm_predictor.utils import stream_completion_response_to_tokens
+from googleapiclient.discovery import build
+import isodate
 
 app = FastAPI()
 BaseConfig.arbitrary_types_allowed = True
@@ -103,33 +106,20 @@ def get_transcript_summary(yt_video_link: str, word_limit: Optional[int]):
     response_stream  = query_engine.query(query_text)
     return StreamingResponse(response_stream.response_gen)
 
+@app.get("/get_video_duration")
+def get_video_duration(yt_video_link):
+    video_id = extract_video_id(yt_video_link)
+    youtube = build('youtube', 'v3', developerKey="AIzaSyAVDA1p-V-yiyQcAC84mdURZnd6EMFeH6k")
+    request = youtube.videos().list(part='contentDetails', id=video_id)
+    response = request.execute()
+
+    dur = isodate.parse_duration(response['items'][0]['contentDetails']['duration'])
+    return dur.total_seconds()
 
 @app.get("/get_flash_cards")
-def get_flash_cards(yt_video_link: str):
-    index = initialize_index(yt_video_link)
-
-    retriever = VectorIndexRetriever(
-        index=index, similarity_top_k=len(index.docstore.docs))
-    response_synthesizer = get_response_synthesizer(
-        response_mode='tree_summarize', use_async = True, streaming = True)
-
-    query_engine = RetrieverQueryEngine(
-        retriever=retriever,
-        response_synthesizer=response_synthesizer,
-    )
-    video_duration = get_video_duration(yt_video_link)
-    flash_cards = math.ceil((video_duration / 60))*5
-
-    query_text = f"""
-        You are an expert in creating flash cards that will help students memorize important concepts.
-        Use the concept of cloze deletion to create flash cards from the context information ONLY.\
-        Each flash card will have a question and a brief answer that is not more than 5 words long. \
-        Label question as 'Front:' and answer as 'Back:' in your output.
-        Do not create more than {flash_cards} flash cards.
-        """
-
-    response_stream  = query_engine.query(query_text)
-    return StreamingResponse(response_stream.response_gen)
+def get_flash_cards(flash_cards: int, node_number: int, yt_video_link: str):
+    node_text = from_persist_path(yt_video_link)[DEFAULT_NODE_TEXT_LIST_KEY][node_number]
+    return StreamingResponse(get_flash_cards_per_node(node_text, flash_cards), media_type="application/json")
 
 @app.post("/create_chat_engine", response_model=None)
 def create_chat_engine(yt_video_link: str, session_id: str, chat_engines_dict_object : ChatEnginesDict = Depends()):

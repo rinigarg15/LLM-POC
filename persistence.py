@@ -2,7 +2,7 @@ import json
 import os
 from typing import Optional
 import fsspec
-from flash_cards_helper import extract_video_id
+from video_helper import extract_video_id
 
 DEFAULT_NODE_TEXT_LIST_KEY = "node_text_list"
 
