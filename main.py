@@ -231,7 +231,8 @@ def generate_key_insight_with_summary(transcript: str, word_limit: int):
     "Using ONLY the context information and no other sources, perform the following actions:\n"
     "First, generate one Key Idea from the context information ONLY.\n"
     "Then elaborate your Key Idea in bullet points.\n"
-    "Do not generate more than 5 bullet points and not more than {word_limit} words.\n"
+    "Do not generate more than 5 bullet points. \n"
+    "Do not generate more than {word_limit} words.\n"
     "Highlight the important concepts in bold. \n"
     """
 
