@@ -12,11 +12,10 @@ def get_flash_cards_per_node(node_text, flash_cards):
 
     prompt = """{transcript}
     --------------
-    Your goal is to identify FlashCards\
-    that can help students memorize important concepts.
-    Use the concept of cloze deletion to create FlashCards from the transcript ONLY.\
+    Your goal is to identify FlashCards that can help students memorize important concepts from the transcript ONLY.
+    Use the concept of cloze deletion to create your FlashCards. \
     Each flash card will have a question and a brief answer that is not more than 5 words long. 
-    Do not create more than {flash_cards} flash cards.
+    Do not create more than {flash_cards} FlashCards.
     """
     
     llm = OpenAI(model="gpt-3.5-turbo-0613")
