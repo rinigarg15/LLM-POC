@@ -168,6 +168,7 @@ def get_QAKey(node_number: int, yt_video_link: str):
 @app.get("/get_assessment")
 def get_assessment(question: str, correct_answer: str, student_answer: str):
     similarity_score = check_similarity_embedding(correct_answer, student_answer)
+    similarity_score = round(similarity_score, 2)
     full_response = {}
     score = similarity_score * 100
 
