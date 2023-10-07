@@ -19,7 +19,7 @@ from llama_index.retrievers import VectorIndexRetriever
 from llama_index.response_synthesizers import get_response_synthesizer
 from llama_index.query_engine import RetrieverQueryEngine
 from assess_questions import get_assess_questions_per_node
-from assessment import generate_feedback, check_similarity
+from assessment import generate_feedback, check_similarity_embedding
 from llama_index.chat_engine.context import ContextChatEngine
 from flash_cards import get_flash_cards_per_node
 from video_helper import extract_video_id
@@ -167,14 +167,14 @@ def get_QAKey(node_number: int, yt_video_link: str):
 
 @app.get("/get_assessment")
 def get_assessment(question: str, correct_answer: str, student_answer: str):
-    similarity_score = check_similarity(correct_answer, student_answer)
+    similarity_score = check_similarity_embedding(correct_answer, student_answer)
     full_response = {}
     score = similarity_score * 100
 
-    if similarity_score <= 60:
+    if score <= 60:
         full_response["Correct"] = "No " + "(" + str(score) + "%)"
-    elif similarity_score > 60:
-        if similarity_score >= 90:
+    elif score > 60:
+        if score >= 90:
             full_response["Correct"] = "Yes " + "(" + str(score) + "%)"
         else:
             full_response["Correct"] = "Partially Correct " + \

@@ -1,19 +1,35 @@
 from llama_index.llms import OpenAI
 from llama_index.program.openai_program import OpenAIPydanticProgram
 from pydantic import BaseModel
-
+from sentence_transformers import CrossEncoder
+from llama_index.embeddings import OpenAIEmbedding
+from llama_index.embeddings.base import similarity
 
 class SimilarityScore(BaseModel):
     """Get similarity score between student_answer and correct_answer"""
     score: float
 
-
 class Feedback(BaseModel):
     """Generate feedback for student"""
     feedback: str
 
+def check_similarity_embedding(correct_answer, student_answer):
+    model = OpenAIEmbedding()
+    embed_1 = model.get_text_embedding(correct_answer)
+    embed_2 = model.get_text_embedding(student_answer)
+    score = similarity(embed_1, embed_2)
 
-def check_similarity(correct_answer, student_answer):
+    return score
+
+def check_similarity_cross_encoder(correct_answer, student_answer):
+    model = CrossEncoder("cross-encoder/stsb-distilroberta-base")
+    pairs = [(correct_answer, student_answer)]
+    scores = model.predict(pairs)
+
+    return scores
+
+
+def check_similarity_llm(correct_answer, student_answer):
     prompt = """ 
     Text1: {correct_answer}
     Text2: {student_answer}
