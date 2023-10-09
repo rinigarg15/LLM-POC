@@ -19,7 +19,7 @@ from llama_index.retrievers import VectorIndexRetriever
 from llama_index.response_synthesizers import get_response_synthesizer
 from llama_index.query_engine import RetrieverQueryEngine
 from assess_questions import get_assess_questions_per_node
-from assessment import generate_feedback, check_similarity_embedding
+from assessment import generate_feedback, check_similarity_cross_encoder
 from llama_index.chat_engine.context import ContextChatEngine
 from flash_cards import get_flash_cards_per_node
 from video_helper import extract_video_id
@@ -167,7 +167,7 @@ def get_QAKey(node_number: int, yt_video_link: str):
 
 @app.get("/get_assessment")
 def get_assessment(question: str, correct_answer: str, student_answer: str):
-    similarity_score = check_similarity_embedding(correct_answer, student_answer)
+    similarity_score = check_similarity_cross_encoder(correct_answer, student_answer)
     similarity_score = round(similarity_score, 2)
     full_response = {}
     score = similarity_score * 100

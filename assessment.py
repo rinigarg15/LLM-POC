@@ -24,9 +24,9 @@ def check_similarity_embedding(correct_answer, student_answer):
 def check_similarity_cross_encoder(correct_answer, student_answer):
     model = CrossEncoder("cross-encoder/stsb-distilroberta-base")
     pairs = [(correct_answer, student_answer)]
-    scores = model.predict(pairs)
+    score = model.predict(pairs)
 
-    return scores
+    return score[0]
 
 
 def check_similarity_llm(correct_answer, student_answer):
