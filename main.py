@@ -226,7 +226,7 @@ def generate_key_insight_with_summary(transcript: str, word_limit: int):
             1) Generate one Key Idea from the context_information ONLY in no more than {key_idea_word_limit} words.\n"
             2) Elaborate your Key Idea in no more than {bullet_points} bullet points . \n
             Your elaboration should not be in more than {elaboration_word_limit} words\n"
-            3) Highlight the important words in your Summary in bold. \n"
+            3) Format the key points in **bold** and *italicize* any relevant phrases \n"
         Use the following format for your final output:
             Key Idea: <Key Idea>
             <elaboration>
