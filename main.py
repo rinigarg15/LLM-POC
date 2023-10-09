@@ -221,27 +221,15 @@ def generate_key_insight_with_summary(transcript: str, word_limit: int):
         context_information: {transcript}
 
         You are an upbeat and friendly tutor with an encouraging tone who has been provided the context_information. \n"
-        Your goal is to generate a concise summary in no more than {word_limit} words using ONLY the context information and no other sources.
+        Your goal is to generate a concise Summary in no more than {word_limit} words using ONLY the context information and no other sources.
         Perform the following actions :-
             1) Generate one Key Idea from the context_information ONLY in no more than {key_idea_word_limit} words.\n"
             2) Elaborate your Key Idea in no more than {bullet_points} bullet points . \n
             Your elaboration should not be in more than {elaboration_word_limit} words\n"
-            3) Highlight the important words in your summary in bold. \n"
+            3) Highlight the important words in your Summary in bold. \n"
         Use the following format for your final output:
             Key Idea: <Key Idea>
             <elaboration>
-    """
-    
-    prompt_1 = f"""
-    " You are an upbeat and friendly tutor with an encouraging tone who has been provided context information below. \n"
-    "---------------------\n"
-    "{transcript}"
-    "\n---------------------\n"
-    "Using ONLY the context information and no other sources, Your task is to generate a concise summary in no more than {word_limit} words by performing the following actions: \n"
-    "First, generate one Key Idea from the context information ONLY in no more than {key_idea_word_limit} words.\n"
-    "Secondly, elaborate your Key Idea in no more than {bullet_points} bullet points . \n
-    "Your elaboration should not be in more than {elaboration_word_limit} words\n"
-    "Thirdly, Highlight the important words in your summary in bold. \n"
     """
 
     response = llm.stream_complete(prompt)
