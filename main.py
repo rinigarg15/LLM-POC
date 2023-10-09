@@ -1,4 +1,3 @@
-import threading
 from typing import Optional
 from fastapi import FastAPI, Depends
 import os
@@ -168,18 +167,18 @@ def get_QAKey(node_number: int, yt_video_link: str):
 @app.get("/get_assessment")
 def get_assessment(question: str, correct_answer: str, student_answer: str):
     similarity_score = check_similarity_cross_encoder(correct_answer, student_answer)
+    similarity_score = similarity_score * 100
     similarity_score = round(similarity_score, 2)
     full_response = {}
-    score = similarity_score * 100
 
-    if score <= 60:
-        full_response["Correct"] = "No " + "(" + str(score) + "%)"
-    elif score > 60:
-        if score >= 90:
-            full_response["Correct"] = "Yes " + "(" + str(score) + "%)"
+    if similarity_score <= 60:
+        full_response["Correct"] = "No " + "(" + str(similarity_score) + "%)"
+    elif similarity_score > 60:
+        if similarity_score >= 90:
+            full_response["Correct"] = "Yes " + "(" + str(similarity_score) + "%)"
         else:
             full_response["Correct"] = "Partially Correct " + \
-                "(" + str(score) + "%)"
+                "(" + str(similarity_score) + "%)"
 
         full_response["Feedback"] = str(generate_feedback(
             correct_answer, student_answer, question))
