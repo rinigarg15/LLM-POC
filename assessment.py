@@ -38,7 +38,7 @@ def check_similarity_llm(correct_answer, student_answer):
     Please assess the extent of matching between the two texts and provide a similarity score.
     """
 
-    llm = OpenAI(model="gpt-3.5-turbo-0613")
+    llm = OpenAI(model="gpt-3.5-turbo-0613", temperature = 0)
     program = OpenAIPydanticProgram.from_defaults(
         output_cls=SimilarityScore,
         prompt_template_str=prompt,
@@ -65,7 +65,7 @@ def generate_feedback(correct_answer, student_answer, question):
     2) Generate feedback to the student based on these missing components. You can use question for more context.
     """
 
-    llm = OpenAI(model="gpt-3.5-turbo")
+    llm = OpenAI(model="gpt-3.5-turbo", temperature = 0)
     program = OpenAIPydanticProgram.from_defaults(
         output_cls=Feedback,
         prompt_template_str=prompt,

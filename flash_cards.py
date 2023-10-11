@@ -18,7 +18,7 @@ def get_flash_cards_per_node(node_text, flash_cards):
     Do not create more than {flash_cards} FlashCards.
     """
     
-    llm = OpenAI(model="gpt-3.5-turbo-0613")
+    llm = OpenAI(model="gpt-3.5-turbo-0613", temperature = 0)
     program = OpenAIPydanticProgram.from_defaults(
         output_cls=FlashCard,
         prompt_template_str=prompt,

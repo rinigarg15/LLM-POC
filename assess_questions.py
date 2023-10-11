@@ -16,7 +16,7 @@ def get_assess_questions_per_node(node_text):
     that can help a student ramp up on the topic explained in the transcript ONLY.\
     Keep the answer inside the QAPairs as descriptive as possible."""
     
-    llm = OpenAI(model="gpt-3.5-turbo-0613")
+    llm = OpenAI(model="gpt-3.5-turbo-0613", temperature = 0)
     program = OpenAIPydanticProgram.from_defaults(
         output_cls=QAPair,
         prompt_template_str=prompt,
