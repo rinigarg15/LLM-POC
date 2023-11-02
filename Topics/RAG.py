@@ -4,16 +4,14 @@ import os
 from llama_hub.web.beautiful_soup_web.base import BeautifulSoupWebReader
 from llama_hub.youtube_transcript.base import YoutubeTranscriptReader
 from llama_index import ServiceContext, StorageContext, SummaryIndex, load_index_from_storage, set_global_service_context
-from llama_index.schema import Document, Node
+from llama_index.schema import Node, NodeWithScore
 from llama_index.storage.docstore import SimpleDocumentStore
 import openai
 from llama_index.llms import OpenAI
 from assess_questions import get_assess_questions_per_node
 from flash_cards import get_flash_cards_per_node
 from generic_helper import Topics
-from llama_index.retrievers import VectorIndexRetriever
 from llama_index.response_synthesizers import get_response_synthesizer
-from llama_index.query_engine import RetrieverQueryEngine
 from persistence import from_persist_path, persist
 
 url1 = 'https://research.ibm.com/blog/retrieval-augmented-generation-RAG'
@@ -22,6 +20,8 @@ url3 = 'https://colabdoge.medium.com/what-is-rag-retrieval-augmented-generation-
 url4 = 'https://prateekjoshi.substack.com/p/what-is-retrieval-augmented-generation'
 url5 = 'https://www.techtarget.com/searchenterpriseai/definition/retrieval-augmented-generation'
 yt_video_link = 'https://www.youtube.com/watch?v=uCTBNMEPNtQ'
+nodes = []
+index = None
 
 def create_RAG_topic():
     initialize_RAG_index()
@@ -30,6 +30,8 @@ def create_RAG_topic():
     store_QAKey()
 
 def initialize_RAG_index():
+    global index
+    global nodes
     openai.api_key = os.getenv("OPENAI_API_KEY")
 
     llm = OpenAI(model="gpt-3.5-turbo", temperature=0)
@@ -62,11 +64,7 @@ def initialize_RAG_index():
         index = SummaryIndex(nodes, service_context=service_context, storage_context=storage_context)
         index.storage_context.persist(persist_dir=index_location)
 
-    return index
-
 def get_key_ideas_from_transcript(word_limit: int):
-    index = initialize_RAG_index()
-
     response_synthesizer = get_response_synthesizer(
         response_mode='tree_summarize')
 
@@ -109,7 +107,6 @@ def generate_key_insight_with_summary(transcript: str, word_limit: int):
     persist("./topics/RAG/key_insight_with_summary", response)
 
 def store_summary():
-    index = initialize_RAG_index()
     response_synthesizer = get_response_synthesizer(
         response_mode='tree_summarize')
 
@@ -119,11 +116,13 @@ def store_summary():
         Do not miss any key points in your summary and don't be repetitve.
     """
 
+    nodes_with_score = [NodeWithScore(node= node, score = 1.0) for node in nodes]
+
     response = response_synthesizer.synthesize(
         query_text,
-        nodes=index.docstore.docs
+        nodes=nodes_with_score
     )
-    persist("./topics_data/RAG/detailed_summary", response)
+    persist("./topics_data/RAG/detailed_summary", response.response)
 
 def store_flash_cards():
     num_flash_cards = 20

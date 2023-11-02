@@ -170,8 +170,8 @@ def get_assessment(question: str, correct_answer: str, student_answer: str):
     full_response["Correct Answer"] = correct_answer
     return full_response
 
-@app.get("/get_key_ideas_from_transcript")
-def get_key_ideas_from_transcript(yt_video_link: str, word_limit: int):
+@app.get("/get_key_idea_from_transcript")
+def get_key_idea_from_transcript(yt_video_link: str, word_limit: int):
     index = initialize_index(yt_video_link)
 
     retriever = VectorIndexRetriever(
