@@ -44,6 +44,7 @@ def initialize_RAG_index():
         index = load_index_from_storage(
             StorageContext.from_defaults(persist_dir=index_location), service_context=service_context
         )
+        nodes = index.docstore.docs.values()
     else:
         loader = BeautifulSoupWebReader()
         documents = loader.load_data(urls=[url1, url2, url3, url4, url5])

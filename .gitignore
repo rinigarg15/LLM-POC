@@ -3,3 +3,5 @@
 *.pyc
 disk_data/
 askify_indexes/
+topic_indexes/
+topics_data/
