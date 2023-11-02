@@ -17,7 +17,7 @@ from pydantic import BaseConfig
 from llama_index.retrievers import VectorIndexRetriever
 from llama_index.response_synthesizers import get_response_synthesizer
 from llama_index.query_engine import RetrieverQueryEngine
-from Topics.RAG import create_RAG_topic
+from Topics.RAG import create_RAG_topic, get_stored_QAKey, get_stored_flash_cards
 from assess_questions import get_assess_questions_per_node
 from assessment import generate_feedback, check_similarity_cross_encoder
 from llama_index.chat_engine.context import ContextChatEngine
@@ -222,11 +222,11 @@ def generate_key_insight_with_summary(transcript: str, word_limit: int):
 
 @app.get("/get_topic_flash_cards")
 def get_topic_flash_cards(topic: Topics):
-    return StreamingResponse(get_flash_cards(), media_type="application/json")
+    return StreamingResponse(get_stored_flash_cards(), media_type="application/json")
 
 @app.get("/get_topic_QAKey")
 def get_topic_QAKey(topic: Topics):
-    return StreamingResponse(get_QAKey(), media_type="application/json")
+    return StreamingResponse(get_stored_QAKey(), media_type="application/json")
 
 @app.get("/get_transcript_summary")
 def get_transcript_summary(yt_video_link: str, word_limit: Optional[int]):        

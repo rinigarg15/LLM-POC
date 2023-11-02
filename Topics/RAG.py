@@ -47,8 +47,9 @@ def initialize_RAG_index():
         documents = loader.load_data(urls=[url1, url2, url3, url4, url5])
 
         loader = YoutubeTranscriptReader()
-        transcript = loader.load_data(ytlinks=[yt_video_link])
-        documents.append(Document(text=transcript, extra_info={"URL": yt_video_link}))
+        transcript_document = loader.load_data(ytlinks=[yt_video_link])
+        transcript_document[-1].extra_info = {"URL": yt_video_link}
+        documents.extend(transcript_document)
 
         nodes = []
         for doc  in documents:
@@ -139,12 +140,12 @@ def store_QAKey():
         QA = json.loads(chunk)
         persist("./topics_data/RAG/QA_Key", QA)
 
-def get_flash_cards():
+def get_stored_flash_cards():
     file_name = "./topics_data/RAG/flash_cards"
     for row in open(file_name, "r"):
         yield row
 
-def get_QAKey():
+def get_stored_QAKey():
     file_name = "./topics_data/RAG/QA_Key"
     for row in open(file_name, "r"):
         yield row
