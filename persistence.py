@@ -22,10 +22,7 @@ def persist_node_texts(yt_video_link: str, index):
     nodes_text_dict = {DEFAULT_NODE_TEXT_LIST_KEY: node_text_list}
     persist(persist_path= "./disk_data/"+video_id, data=nodes_text_dict)
 
-def from_persist_path(yt_video_link: str, fs: Optional[fsspec.AbstractFileSystem] = None):
-    video_id = extract_video_id(yt_video_link)
-    persist_path= "./disk_data/"+video_id
-    
+def from_persist_path(persist_path: str, fs: Optional[fsspec.AbstractFileSystem] = None):
     fs = fs or fsspec.filesystem("file")
     with fs.open(persist_path, "rb") as f:
         data = json.load(f)

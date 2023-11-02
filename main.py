@@ -17,10 +17,12 @@ from pydantic import BaseConfig
 from llama_index.retrievers import VectorIndexRetriever
 from llama_index.response_synthesizers import get_response_synthesizer
 from llama_index.query_engine import RetrieverQueryEngine
+from Topics.RAG import create_RAG_topic
 from assess_questions import get_assess_questions_per_node
 from assessment import generate_feedback, check_similarity_cross_encoder
 from llama_index.chat_engine.context import ContextChatEngine
 from flash_cards import get_flash_cards_per_node
+from generic_helper import Topics
 from video_helper import extract_video_id
 from fastapi.responses import StreamingResponse
 import math
@@ -75,35 +77,14 @@ def initialize_index(yt_video_link: str):
 
 def get_transcript_list(yt_video_link: str):
     initialize_index(yt_video_link)
-    node_texts_list = from_persist_path(yt_video_link)[DEFAULT_NODE_TEXT_LIST_KEY]
+    video_id = extract_video_id(yt_video_link)
+    persist_path= "./disk_data/"+video_id
+    node_texts_list = from_persist_path(persist_path)[DEFAULT_NODE_TEXT_LIST_KEY]
     return node_texts_list
 
-@app.get("/get_transcript_summary")
-def get_transcript_summary(yt_video_link: str, word_limit: Optional[int]):        
-    index = initialize_index(yt_video_link)
-
-    retriever = VectorIndexRetriever(
-        index=index, similarity_top_k=len(index.docstore.docs))
-    response_synthesizer = get_response_synthesizer(
-        response_mode='tree_summarize', use_async = True, streaming = True)
-
-    query_engine = RetrieverQueryEngine(
-        retriever=retriever,
-        response_synthesizer=response_synthesizer,
-    )
-
-    word_limit = word_limit or 500
-
-    query_text = f"""
-        You are an upbeat and friendly tutor with an encouraging tone.\
-        Provide Key Insights from the context information ONLY.
-        For each key insight, provide relevant summary in the form of bullet points.
-        Use no more than {word_limit} words in your summary.
-        Highlight the important words in your summary in bold.
-    """
-
-    response_stream  = query_engine.query(query_text)
-    return StreamingResponse(response_stream.response_gen)
+@app.on_event("startup")
+def startup_event():
+    create_RAG_topic()
 
 @app.get("/get_video_duration")
 def get_video_duration(yt_video_link):
@@ -117,7 +98,9 @@ def get_video_duration(yt_video_link):
 
 @app.get("/get_flash_cards")
 def get_flash_cards(flash_cards: int, node_number: int, yt_video_link: str):
-    node_text = from_persist_path(yt_video_link)[DEFAULT_NODE_TEXT_LIST_KEY][node_number]
+    video_id = extract_video_id(yt_video_link)
+    persist_path= "./disk_data/"+video_id
+    node_text = from_persist_path(persist_path)[DEFAULT_NODE_TEXT_LIST_KEY][node_number]
     return StreamingResponse(get_flash_cards_per_node(node_text, flash_cards), media_type="application/json")
 
 @app.post("/create_chat_engine", response_model=None)
@@ -161,7 +144,9 @@ def get_transcript(yt_video_link: str):
 
 @app.get("/get_QAKey")
 def get_QAKey(node_number: int, yt_video_link: str):
-    node_text = from_persist_path(yt_video_link)[DEFAULT_NODE_TEXT_LIST_KEY][node_number]
+    video_id = extract_video_id(yt_video_link)
+    persist_path= "./disk_data/"+video_id
+    node_text = from_persist_path(persist_path)[DEFAULT_NODE_TEXT_LIST_KEY][node_number]
     return StreamingResponse(get_assess_questions_per_node(node_text), media_type="application/json")
 
 @app.get("/get_assessment")
@@ -234,3 +219,38 @@ def generate_key_insight_with_summary(transcript: str, word_limit: int):
     response = llm.stream_complete(prompt)
     stream_tokens = stream_completion_response_to_tokens(response)
     return StreamingResponse(stream_tokens)
+
+@app.get("/get_topic_flash_cards")
+def get_topic_flash_cards(topic: Topics):
+    return StreamingResponse(get_flash_cards(), media_type="application/json")
+
+@app.get("/get_topic_QAKey")
+def get_topic_QAKey(topic: Topics):
+    return StreamingResponse(get_QAKey(), media_type="application/json")
+
+@app.get("/get_transcript_summary")
+def get_transcript_summary(yt_video_link: str, word_limit: Optional[int]):        
+    index = initialize_index(yt_video_link)
+
+    retriever = VectorIndexRetriever(
+        index=index, similarity_top_k=len(index.docstore.docs))
+    response_synthesizer = get_response_synthesizer(
+        response_mode='tree_summarize', use_async = True, streaming = True)
+
+    query_engine = RetrieverQueryEngine(
+        retriever=retriever,
+        response_synthesizer=response_synthesizer,
+    )
+
+    word_limit = word_limit or 500
+
+    query_text = f"""
+        You are an upbeat and friendly tutor with an encouraging tone.\
+        Provide Key Insights from the context information ONLY.
+        For each key insight, provide relevant summary in the form of bullet points.
+        Use no more than {word_limit} words in your summary.
+        Highlight the important words in your summary in bold.
+    """
+
+    response_stream  = query_engine.query(query_text)
+    return StreamingResponse(response_stream.response_gen)
