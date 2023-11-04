@@ -13,6 +13,11 @@ from flash_cards import get_flash_cards_per_node
 from generic_helper import Topics
 from llama_index.response_synthesizers import get_response_synthesizer
 from persistence import from_persist_path, persist
+DEFAULT_TOPICS_STORE = "./topics_data/"
+RAG_STORE = "RAG/"
+DETAILED_SUMMARY_STORE = "detailed_summary"
+FLASH_CARDS_STORE = "flash_cards"
+QA_KEY_STORE = "QA_Key"
 
 url1 = 'https://research.ibm.com/blog/retrieval-augmented-generation-RAG'
 url2 = 'https://www.datastax.com/guides/what-is-retrieval-augmented-generation?filter=%7B%7D'
@@ -123,29 +128,29 @@ def store_summary():
         query_text,
         nodes=nodes_with_score
     )
-    persist("./topics_data/RAG/detailed_summary", response.response)
+    persist(DEFAULT_TOPICS_STORE + RAG_STORE + DETAILED_SUMMARY_STORE, response.response)
 
 def store_flash_cards():
     num_flash_cards = 20
-    node_text = from_persist_path("./topics_data/RAG/detailed_summary")
+    node_text = from_persist_path(DEFAULT_TOPICS_STORE + RAG_STORE + DETAILED_SUMMARY_STORE)
     response = get_flash_cards_per_node(node_text, num_flash_cards)
     for chunk in response:
         flash_card = json.loads(chunk)
-        persist("./topics_data/RAG/flash_cards", flash_card)
+        persist(DEFAULT_TOPICS_STORE + RAG_STORE + FLASH_CARDS_STORE, flash_card)
 
 def store_QAKey():
-    node_text = from_persist_path("./topics_data/RAG/detailed_summary")
+    node_text = from_persist_path(DEFAULT_TOPICS_STORE + RAG_STORE + DETAILED_SUMMARY_STORE)
     response = get_assess_questions_per_node(node_text)
     for chunk in response:
         QA = json.loads(chunk)
-        persist("./topics_data/RAG/QA_Key", QA)
+        persist(DEFAULT_TOPICS_STORE + RAG_STORE + QA_KEY_STORE, QA)
 
 def get_stored_flash_cards():
-    file_name = "./topics_data/RAG/flash_cards"
+    file_name = DEFAULT_TOPICS_STORE + RAG_STORE + FLASH_CARDS_STORE
     for row in open(file_name, "r"):
         yield row
 
 def get_stored_QAKey():
-    file_name = "./topics_data/RAG/QA_Key"
+    file_name = DEFAULT_TOPICS_STORE + RAG_STORE + QA_KEY_STORE
     for row in open(file_name, "r"):
         yield row
