@@ -17,7 +17,7 @@ from pydantic import BaseConfig
 from llama_index.retrievers import VectorIndexRetriever
 from llama_index.response_synthesizers import get_response_synthesizer
 from llama_index.query_engine import RetrieverQueryEngine
-from Topics.RAG import create_RAG_topic, get_stored_QAKey, get_stored_flash_cards
+from Topics.RAG import create_RAG_topic, create_chat_engine_topic, get_stored_QAKey, get_stored_flash_cards_generator, get_stored_QAKey_generator, get_stored_key_idea_generator, get_stored_summary_generator
 from assess_questions import get_assess_questions_per_node
 from assessment import generate_feedback, check_similarity_cross_encoder
 from llama_index.chat_engine.context import ContextChatEngine
@@ -33,20 +33,8 @@ import isodate
 
 app = FastAPI()
 BaseConfig.arbitrary_types_allowed = True
-
-class ChatEnginesDict:
-    _instance = None
-
-    def __new__(cls):
-        if cls._instance is None:
-            cls._instance = super(ChatEnginesDict, cls).__new__(cls)
-            cls._instance.chat_engines_dict = {}
-        return cls._instance
-
-    def add(self, session_id, context_chat_engine):
-        self.chat_engines_dict[session_id] = context_chat_engine
-
-chat_engines_dict_object = ChatEnginesDict()
+chat_engines_dict = {}
+chat_engines_dict_topic = {}
 
 def initialize_index(yt_video_link: str):
     openai.api_key = os.getenv("OPENAI_API_KEY")
@@ -82,10 +70,6 @@ def get_transcript_list(yt_video_link: str):
     node_texts_list = from_persist_path(persist_path)[DEFAULT_NODE_TEXT_LIST_KEY]
     return node_texts_list
 
-@app.on_event("startup")
-def startup_event():
-    create_RAG_topic()
-
 @app.get("/get_video_duration")
 def get_video_duration(yt_video_link):
     video_id = extract_video_id(yt_video_link)
@@ -104,7 +88,7 @@ def get_flash_cards(flash_cards: int, node_number: int, yt_video_link: str):
     return StreamingResponse(get_flash_cards_per_node(node_text, flash_cards), media_type="application/json")
 
 @app.post("/create_chat_engine", response_model=None)
-def create_chat_engine(yt_video_link: str, session_id: str, chat_engines_dict_object : ChatEnginesDict = Depends()):
+def create_chat_engine(yt_video_link: str, session_id: str):
     index = initialize_index(yt_video_link)
 
     retriever = VectorIndexRetriever(
@@ -120,12 +104,12 @@ def create_chat_engine(yt_video_link: str, session_id: str, chat_engines_dict_ob
         and DO NOT provide a generic response."""
     
     chat_engine = ContextChatEngine.from_defaults(system_prompt = system_prompt, retriever = retriever, response_synthesizer = response_synthesizer)
-    chat_engines_dict_object.add(session_id, chat_engine)
+    chat_engines_dict[session_id] = chat_engine
     return {}
 
 @app.get("/chat")
-def chat(query: str, session_id: str, chat_engines_dict_object : ChatEnginesDict = Depends()):
-    chat_engine = chat_engines_dict_object.chat_engines_dict[session_id]
+def chat(query: str, session_id: str):
+    chat_engine = chat_engines_dict[session_id]
     response_stream = chat_engine.stream_chat(query)
 
     return StreamingResponse(response_stream.response_gen)
@@ -222,35 +206,31 @@ def generate_key_insight_with_summary(transcript: str, word_limit: int):
 
 @app.get("/get_topic_flash_cards")
 def get_topic_flash_cards(topic: Topics):
-    return StreamingResponse(get_stored_flash_cards(), media_type="application/json")
+    return StreamingResponse(get_stored_flash_cards_generator(), media_type="application/json")
+
+@app.get("/get_topic_QAKey_streamed")
+def get_topic_QAKey_streamed(topic: Topics):
+    return StreamingResponse(get_stored_QAKey_generator(), media_type="application/json")
 
 @app.get("/get_topic_QAKey")
 def get_topic_QAKey(topic: Topics):
-    return StreamingResponse(get_stored_QAKey(), media_type="application/json")
+    return get_stored_QAKey()
 
-@app.get("/get_transcript_summary")
-def get_transcript_summary(yt_video_link: str, word_limit: Optional[int]):        
-    index = initialize_index(yt_video_link)
+@app.get("/create_chat_engines_topic")
+def create_chat_engines_topic(session_id: str):
+    chat_engines_dict_topic[session_id][Topics.RAG.value] = create_chat_engine_topic()
 
-    retriever = VectorIndexRetriever(
-        index=index, similarity_top_k=len(index.docstore.docs))
-    response_synthesizer = get_response_synthesizer(
-        response_mode='tree_summarize', use_async = True, streaming = True)
+@app.get("/chat_topic")
+def chat_topic(query: str, session_id: str, topic: str):
+    chat_engine = chat_engines_dict_topic[session_id][topic]
+    response_stream = chat_engine.stream_chat(query)
 
-    query_engine = RetrieverQueryEngine(
-        retriever=retriever,
-        response_synthesizer=response_synthesizer,
-    )
-
-    word_limit = word_limit or 500
-
-    query_text = f"""
-        You are an upbeat and friendly tutor with an encouraging tone.\
-        Provide Key Insights from the context information ONLY.
-        For each key insight, provide relevant summary in the form of bullet points.
-        Use no more than {word_limit} words in your summary.
-        Highlight the important words in your summary in bold.
-    """
-
-    response_stream  = query_engine.query(query_text)
     return StreamingResponse(response_stream.response_gen)
+
+@app.get("/get_key_idea_from_topic")
+def get_key_idea_from_topic(topic: Topics, word_limit: int):
+    return StreamingResponse(get_stored_key_idea_generator(), media_type="application/json")
+
+@app.get("/get_summary_from_topic")
+def get_summary_from_topic(topic: Topics, word_limit: Optional[int]):  
+    return StreamingResponse(get_stored_summary_generator(), media_type="application/json")      

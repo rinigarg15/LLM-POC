@@ -11,13 +11,17 @@ from llama_index.llms import OpenAI
 from assess_questions import get_assess_questions_per_node
 from flash_cards import get_flash_cards_per_node
 from generic_helper import Topics
-from llama_index.response_synthesizers import get_response_synthesizer
+from llama_index.response_synthesizers import ResponseMode, get_response_synthesizer
 from persistence import from_persist_path, persist
+from llama_index.chat_engine.context import ContextChatEngine
+
 DEFAULT_TOPICS_STORE = "./topics_data/"
 RAG_STORE = "RAG/"
 DETAILED_SUMMARY_STORE = "detailed_summary"
 FLASH_CARDS_STORE = "flash_cards"
 QA_KEY_STORE = "QA_Key"
+KEY_IDEA_STORE = "key_idea"
+SUMMARY_STORE = "summary"
 
 url1 = 'https://research.ibm.com/blog/retrieval-augmented-generation-RAG'
 url2 = 'https://www.datastax.com/guides/what-is-retrieval-augmented-generation?filter=%7B%7D'
@@ -33,6 +37,8 @@ def create_RAG_topic():
     store_summary()
     store_flash_cards()
     store_QAKey()
+    store_key_idea()
+    store_key_idea_summary()
 
 def initialize_RAG_index():
     global index
@@ -70,48 +76,6 @@ def initialize_RAG_index():
         index = SummaryIndex(nodes, service_context=service_context, storage_context=storage_context)
         index.storage_context.persist(persist_dir=index_location)
 
-def get_key_ideas_from_transcript(word_limit: int):
-    response_synthesizer = get_response_synthesizer(
-        response_mode='tree_summarize')
-
-    query_text = f"""
-        You are an upbeat and friendly tutor with an encouraging tone.\
-        Generate one Key Idea of the context information provided.
-        Use no more than {word_limit} words for your Key Idea.
-        Highlight the important concepts in bold.
-    """
-
-    response = response_synthesizer.synthesize(
-        query_text,
-        nodes=index.docstore.docs
-    )
-
-    persist("./topics/RAG/key_idea", response)
-
-def generate_key_insight_with_summary(transcript: str, word_limit: int):
-    llm = OpenAI(model="gpt-3.5-turbo", temperature=0)
-    key_idea_word_limit = int(0.2*word_limit)
-    elaboration_word_limit = word_limit - key_idea_word_limit
-    bullet_points = math.ceil(elaboration_word_limit/15)
-
-    prompt = f"""
-        context_information: {transcript}
-
-        You are an upbeat and friendly tutor with an encouraging tone who has been provided the context_information. \n"
-        Your goal is to generate a concise Summary in no more than {word_limit} words using ONLY the context information and no other sources.
-        Perform the following actions :-
-            1) Generate one Key Idea from the context_information ONLY in no more than {key_idea_word_limit} words.\n"
-            2) Elaborate your Key Idea in no more than {bullet_points} bullet points . \n
-            Your elaboration should not be in more than {elaboration_word_limit} words\n"
-            3) Format the key points in **bold** and *italicize* any relevant phrases \n"
-        Use the following format for your final output:
-            Key Idea: <Key Idea>
-            <elaboration>
-    """
-
-    response = llm.complete(prompt)
-    persist("./topics/RAG/key_insight_with_summary", response)
-
 def store_summary():
     response_synthesizer = get_response_synthesizer(
         response_mode='tree_summarize')
@@ -145,12 +109,78 @@ def store_QAKey():
         QA = json.loads(chunk)
         persist(DEFAULT_TOPICS_STORE + RAG_STORE + QA_KEY_STORE, QA)
 
-def get_stored_flash_cards():
+def store_key_idea(word_limit: int):
+    response_synthesizer = get_response_synthesizer(
+        response_mode='tree_summarize')
+
+    query_text = f"""
+        You are an upbeat and friendly tutor with an encouraging tone.\
+        Generate one Key Idea of the context information provided.
+        Use no more than {word_limit} words for your Key Idea.
+        Highlight the important concepts in bold.
+    """
+
+    nodes_with_score = [NodeWithScore(node= node, score = 1.0) for node in nodes]
+
+    response = response_synthesizer.synthesize(
+        query_text,
+        nodes=nodes_with_score
+    )
+    persist(DEFAULT_TOPICS_STORE + RAG_STORE + KEY_IDEA_STORE, response.response)
+
+def store_key_idea_summary(word_limit: int):
+    response_synthesizer = get_response_synthesizer(
+        response_mode='tree_summarize')
+
+    query_text = f"""
+        You are an upbeat and friendly tutor with an encouraging tone.\
+        Provide Key Insights from the context information ONLY.
+        For each key insight, provide relevant summary in the form of bullet points.
+        Use no more than {word_limit} words in your summary.
+        Highlight the important words in your summary in bold.
+    """
+
+    nodes_with_score = [NodeWithScore(node= node, score = 1.0) for node in nodes]
+
+    response = response_synthesizer.synthesize(
+        query_text,
+        nodes=nodes_with_score
+    )
+    persist(DEFAULT_TOPICS_STORE + RAG_STORE + SUMMARY_STORE, response.response)
+
+def get_stored_flash_cards_generator():
     file_name = DEFAULT_TOPICS_STORE + RAG_STORE + FLASH_CARDS_STORE
+    for row in open(file_name, "r"):
+        yield row
+
+def get_stored_QAKey_generator():
+    file_name = DEFAULT_TOPICS_STORE + RAG_STORE + QA_KEY_STORE
+    for row in open(file_name, "r"):
+        yield row
+
+def get_stored_key_idea_generator():
+    file_name = DEFAULT_TOPICS_STORE + RAG_STORE + KEY_IDEA_STORE
     for row in open(file_name, "r"):
         yield row
 
 def get_stored_QAKey():
     file_name = DEFAULT_TOPICS_STORE + RAG_STORE + QA_KEY_STORE
+    return from_persist_path(file_name)
+
+def get_stored_summary_generator():
+    file_name = DEFAULT_TOPICS_STORE + RAG_STORE + SUMMARY_STORE
     for row in open(file_name, "r"):
         yield row
+
+def create_chat_engine_topic():
+    retriever = index.as_retriever()
+
+    response_synthesizer = get_response_synthesizer(response_mode=ResponseMode.COMPACT, use_async = True, streaming = True)
+
+    system_prompt = f""" You are a friendly and helpful mentor whose task is to \ 
+        use ONLY the context information and no other sources to answer the question being asked.\
+        If you don't find an answer within the context, SAY 'Sorry, I could not find the answer within the context.' \ 
+        and DO NOT provide a generic response."""
+    
+    chat_engine = ContextChatEngine.from_defaults(system_prompt = system_prompt, retriever = retriever, response_synthesizer = response_synthesizer)
+    return chat_engine
