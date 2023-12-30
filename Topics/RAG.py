@@ -1,5 +1,4 @@
 import json
-import math
 import os
 from llama_hub.web.beautiful_soup_web.base import BeautifulSoupWebReader
 from llama_hub.youtube_transcript.base import YoutubeTranscriptReader
@@ -12,7 +11,7 @@ from assess_questions import get_assess_questions_per_node
 from flash_cards import get_flash_cards_per_node
 from generic_helper import Topics
 from llama_index.response_synthesizers import ResponseMode, get_response_synthesizer
-from persistence import from_persist_path, persist
+from persistence import from_persist_path, persist, from_persist_path_line
 from llama_index.chat_engine.context import ContextChatEngine
 
 DEFAULT_TOPICS_STORE = "./topics_data/"
@@ -37,8 +36,6 @@ def create_RAG_topic():
     store_summary()
     store_flash_cards()
     store_QAKey()
-    store_key_idea()
-    store_key_idea_summary()
 
 def initialize_RAG_index():
     global index
@@ -96,18 +93,22 @@ def store_summary():
 
 def store_flash_cards():
     num_flash_cards = 20
-    node_text = from_persist_path(DEFAULT_TOPICS_STORE + RAG_STORE + DETAILED_SUMMARY_STORE)
+    node_text = from_persist_path_line(DEFAULT_TOPICS_STORE + RAG_STORE + DETAILED_SUMMARY_STORE)
     response = get_flash_cards_per_node(node_text, num_flash_cards)
+    flash_cards = []
     for chunk in response:
         flash_card = json.loads(chunk)
-        persist(DEFAULT_TOPICS_STORE + RAG_STORE + FLASH_CARDS_STORE, flash_card)
+        flash_cards.append(flash_card)
+    persist(DEFAULT_TOPICS_STORE + RAG_STORE + FLASH_CARDS_STORE, flash_cards)
 
 def store_QAKey():
-    node_text = from_persist_path(DEFAULT_TOPICS_STORE + RAG_STORE + DETAILED_SUMMARY_STORE)
+    node_text = from_persist_path_line(DEFAULT_TOPICS_STORE + RAG_STORE + DETAILED_SUMMARY_STORE)
     response = get_assess_questions_per_node(node_text)
+    QAs = []
     for chunk in response:
         QA = json.loads(chunk)
-        persist(DEFAULT_TOPICS_STORE + RAG_STORE + QA_KEY_STORE, QA)
+        QAs.append(QA)
+    persist(DEFAULT_TOPICS_STORE + RAG_STORE + QA_KEY_STORE, QAs)
 
 def store_key_idea(word_limit: int):
     response_synthesizer = get_response_synthesizer(
@@ -126,7 +127,7 @@ def store_key_idea(word_limit: int):
         query_text,
         nodes=nodes_with_score
     )
-    persist(DEFAULT_TOPICS_STORE + RAG_STORE + KEY_IDEA_STORE, response.response)
+    persist(DEFAULT_TOPICS_STORE + RAG_STORE + KEY_IDEA_STORE,response.response)
 
 def store_key_idea_summary(word_limit: int):
     response_synthesizer = get_response_synthesizer(
@@ -150,22 +151,26 @@ def store_key_idea_summary(word_limit: int):
 
 def get_stored_flash_cards_generator():
     file_name = DEFAULT_TOPICS_STORE + RAG_STORE + FLASH_CARDS_STORE
-    for row in open(file_name, "r"):
-        yield row
+    flash_cards = from_persist_path(file_name)
+    for row in flash_cards:
+        json_data = json.dumps({"front": row["front"], "back": row["back"]})
+        yield json_data + "\n"
 
 def get_stored_QAKey_generator():
     file_name = DEFAULT_TOPICS_STORE + RAG_STORE + QA_KEY_STORE
-    for row in open(file_name, "r"):
-        yield row
+    QA_key = from_persist_path(file_name)
+    for row in QA_key:
+        json_data = json.dumps({"question": row["question"], "answer": row["answer"]})
+        yield json_data + "\n"
+
+def get_stored_QAKey():
+    file_name = DEFAULT_TOPICS_STORE + RAG_STORE + QA_KEY_STORE
+    return from_persist_path(file_name)
 
 def get_stored_key_idea_generator():
     file_name = DEFAULT_TOPICS_STORE + RAG_STORE + KEY_IDEA_STORE
     for row in open(file_name, "r"):
         yield row
-
-def get_stored_QAKey():
-    file_name = DEFAULT_TOPICS_STORE + RAG_STORE + QA_KEY_STORE
-    return from_persist_path(file_name)
 
 def get_stored_summary_generator():
     file_name = DEFAULT_TOPICS_STORE + RAG_STORE + SUMMARY_STORE

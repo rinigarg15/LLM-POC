@@ -1,5 +1,4 @@
-from typing import Optional
-from fastapi import FastAPI, Depends
+from fastapi import FastAPI
 import os
 import openai
 from llama_index.llms import OpenAI
@@ -17,24 +16,24 @@ from pydantic import BaseConfig
 from llama_index.retrievers import VectorIndexRetriever
 from llama_index.response_synthesizers import get_response_synthesizer
 from llama_index.query_engine import RetrieverQueryEngine
-from Topics.RAG import create_RAG_topic, create_chat_engine_topic, get_stored_QAKey, get_stored_flash_cards_generator, get_stored_QAKey_generator, get_stored_key_idea_generator, get_stored_summary_generator
 from assess_questions import get_assess_questions_per_node
 from assessment import generate_feedback, check_similarity_cross_encoder
 from llama_index.chat_engine.context import ContextChatEngine
 from flash_cards import get_flash_cards_per_node
-from generic_helper import Topics
 from video_helper import extract_video_id
 from fastapi.responses import StreamingResponse
 import math
 from persistence import from_persist_path, persist_node_texts, DEFAULT_NODE_TEXT_LIST_KEY
 from llama_index.llm_predictor.utils import stream_completion_response_to_tokens
 from googleapiclient.discovery import build
+from Routes import topic_routes, auto_grader_routes
 import isodate
 
 app = FastAPI()
+app.include_router(topic_routes.router)
+app.include_router(auto_grader_routes.router)
 BaseConfig.arbitrary_types_allowed = True
 chat_engines_dict = {}
-chat_engines_dict_topic = {}
 
 def initialize_index(yt_video_link: str):
     openai.api_key = os.getenv("OPENAI_API_KEY")
@@ -204,33 +203,3 @@ def generate_key_insight_with_summary(transcript: str, word_limit: int):
     stream_tokens = stream_completion_response_to_tokens(response)
     return StreamingResponse(stream_tokens)
 
-@app.get("/get_topic_flash_cards")
-def get_topic_flash_cards(topic: Topics):
-    return StreamingResponse(get_stored_flash_cards_generator(), media_type="application/json")
-
-@app.get("/get_topic_QAKey_streamed")
-def get_topic_QAKey_streamed(topic: Topics):
-    return StreamingResponse(get_stored_QAKey_generator(), media_type="application/json")
-
-@app.get("/get_topic_QAKey")
-def get_topic_QAKey(topic: Topics):
-    return get_stored_QAKey()
-
-@app.get("/create_chat_engines_topic")
-def create_chat_engines_topic(session_id: str):
-    chat_engines_dict_topic[session_id][Topics.RAG.value] = create_chat_engine_topic()
-
-@app.get("/chat_topic")
-def chat_topic(query: str, session_id: str, topic: str):
-    chat_engine = chat_engines_dict_topic[session_id][topic]
-    response_stream = chat_engine.stream_chat(query)
-
-    return StreamingResponse(response_stream.response_gen)
-
-@app.get("/get_key_idea_from_topic")
-def get_key_idea_from_topic(topic: Topics, word_limit: int):
-    return StreamingResponse(get_stored_key_idea_generator(), media_type="application/json")
-
-@app.get("/get_summary_from_topic")
-def get_summary_from_topic(topic: Topics, word_limit: Optional[int]):  
-    return StreamingResponse(get_stored_summary_generator(), media_type="application/json")      

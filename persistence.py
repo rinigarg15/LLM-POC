@@ -27,3 +27,11 @@ def from_persist_path(persist_path: str, fs: Optional[fsspec.AbstractFileSystem]
     with fs.open(persist_path, "rb") as f:
         data = json.load(f)
     return data
+
+def from_persist_path_line(persist_path: str, fs: Optional[fsspec.AbstractFileSystem] = None):
+    fs = fs or fsspec.filesystem("file")
+    data = []
+    with fs.open(persist_path, "rb") as f:
+        for line in f:
+            data.append(json.loads(line))
+    return data
