@@ -13,19 +13,47 @@ from llama_index import ServiceContext
 from llama_index.response_synthesizers.tree_summarize import TreeSummarize
 from fastapi import Body
 from typing import Dict
-
 from ORM.populate_tables import State, create_ques_and_ques_choices, add_question_paper
 
-SECRET_KEY = os.getenv("SECRET_KEY")
-ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 20
-#TEMP_DIR = "temp"
-
-manager = LoginManager(SECRET_KEY, token_url='/login', use_cookie=False)
 router = APIRouter()
+
+# SECRET_KEY = os.getenv("SECRET_KEY")
+# ALGORITHM = "HS256"
+# ACCESS_TOKEN_EXPIRE_MINUTES = 20
+# #TEMP_DIR = "temp"
+
+# manager = LoginManager(SECRET_KEY, token_url='/login', use_cookie=False)
 
 # if not os.path.exists(TEMP_DIR):
 #     os.makedirs(TEMP_DIR)
+# @router.post('/login')
+# def login(form_data: OAuth2PasswordRequestForm = Depends()):
+#     user = load_user(form_data)
+#     if not user:
+#         raise HTTPException(status_code=400, detail="Incorrect username or password")
+
+#     if not user.check_password(form_data.password):
+#         raise HTTPException(status_code=400, detail="Incorrect username or password")
+    
+#     access_token = manager.create_access_token(data={'sub': form_data.username})
+#     return {'access_token': access_token, 'token_type': 'bearer'}
+
+# @router.post("/signup")
+# def signup(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
+#     existing_user = load_user(form_data, db)
+#     if existing_user:
+#         raise HTTPException(status_code=400, detail="Username already registered")
+
+#     new_user = User(user_name=form_data.username)
+#     new_user.set_password(form_data.password)
+#     db.add(new_user)
+#     db.commit()
+#     return {"message": "User created successfully"}
+
+# @manager.user_loader
+# def load_user(form_data, db: Session = Depends(get_db)):
+#     user = db.query(User).filter(User.user_name == form_data.username).first()
+#     return user
 
 def get_db():
     db = SessionLocal()
@@ -33,35 +61,6 @@ def get_db():
         yield db
     finally:
         db.close()
-
-@router.post('/login')
-def login(form_data: OAuth2PasswordRequestForm = Depends()):
-    user = load_user(form_data)
-    if not user:
-        raise HTTPException(status_code=400, detail="Incorrect username or password")
-
-    if not user.check_password(form_data.password):
-        raise HTTPException(status_code=400, detail="Incorrect username or password")
-    
-    access_token = manager.create_access_token(data={'sub': form_data.username})
-    return {'access_token': access_token, 'token_type': 'bearer'}
-
-@router.post("/signup")
-def signup(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
-    existing_user = load_user(form_data, db)
-    if existing_user:
-        raise HTTPException(status_code=400, detail="Username already registered")
-
-    new_user = User(user_name=form_data.username)
-    new_user.set_password(form_data.password)
-    db.add(new_user)
-    db.commit()
-    return {"message": "User created successfully"}
-
-@manager.user_loader
-def load_user(form_data, db: Session = Depends(get_db)):
-    user = db.query(User).filter(User.user_name == form_data.username).first()
-    return user
 
 @router.post("/final_assessment")
 def final_assessment(user_question_paper_id: int):

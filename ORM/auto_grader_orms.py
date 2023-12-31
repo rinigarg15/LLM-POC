@@ -5,8 +5,11 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship, sessionmaker
 from datetime import datetime
 import bcrypt
+import os
 
-engine = create_engine('mysql+pymysql://llmadmin:uWQEzQeE1j17C40Eo91noxu2sjpVbli6@llmpocdb.mysql.database.azure.com:3306/auto_grader_db')
+pwd = os.getenv("SQL_DB_PWD")
+
+engine = create_engine(f'mysql+pymysql://llmadmin:{pwd}@llmpocdb.mysql.database.azure.com:3306/auto_grader_db')
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 Base = declarative_base()
