@@ -54,6 +54,11 @@ router = APIRouter()
 # def load_user(form_data, db: Session = Depends(get_db)):
 #     user = db.query(User).filter(User.user_name == form_data.username).first()
 #     return user
+# def upload_file(file: UploadFile):
+#     file_location = os.path.join(TEMP_DIR, file.filename)
+#     with open(file_location, "wb+") as file_object:
+#         file_object.write(file.file.read())
+#     return file_location
 
 def get_db():
     db = SessionLocal()
@@ -189,36 +194,39 @@ def post_paper_feedback(user_question_paper_id: int, feedback):
     db.commit()
     db.close()
 
-@router.get("/get_question_papers")
-def get_question_papers():
+@router.get("/question_papers")
+def question_papers():
     db = SessionLocal()
     question_papers = db.query(QuestionPaper).filter(QuestionPaper.state == State.COMPLETED.value).all()
     db.close()
     return question_papers
 
-@router.get("/get_questions_for_paper")
-def get_questions_for_paper(question_paper_id: int):
+@router.post("/user_questions_paper")
+def create_user_question_paper(question_paper_id: int):
     user_id = 1
-    result = []
     db = SessionLocal()
     user_question_paper = UserQuestionPaper(user_id=user_id, question_paper_id = question_paper_id, score = 0)
+    db.add(user_question_paper)
+    db.commit()
+    user_question_paper_id = user_question_paper.id
+    db.close()
+    return user_question_paper_id
 
+@router.get("/questions/{question_paper_id}")
+def get_questions_for_paper(question_paper_id: int):
+    db = SessionLocal()
+    result = []
     questions = db.query(Question).filter(Question.question_paper_id == question_paper_id).all()
     for question in questions:
         question_choices = db.query(QuestionChoice).filter(QuestionChoice.question == question).all()
-        result.append([(question.question_text, question.id), [(question_choice.choice_text, question_choice.id) for question_choice in question_choices]])
+        marking_scheme = db.query(MarkingScheme).filter(MarkingScheme.question_id == question.id).first()
+        questions_list = [(question.question_text, question.id), [(question_choice.choice_text, question_choice.id) for question_choice in question_choices]]
+        if marking_scheme:
+            questions_list.append(marking_scheme.correct_question_choice_id)
+        result.append(questions_list)
 
-    db.add(user_question_paper)
-    db.commit()
-    result.append(user_question_paper.id)
     db.close()
     return result
-
-# def upload_file(file: UploadFile):
-#     file_location = os.path.join(TEMP_DIR, file.filename)
-#     with open(file_location, "wb+") as file_object:
-#         file_object.write(file.file.read())
-#     return file_location
 
 @router.post("/create_question_paper")
 def create_question_paper(form_data: Dict = Body(...)):
@@ -248,6 +256,35 @@ def update_question_paper_state(question_paper_id: int, state: State):
     question_paper.state = state
     db.commit()
     db.close()
+
+@router.delete("/delete_questions/{question_id}")
+def delete_question(question_id: int):
+    db = SessionLocal()
+    question = db.query(Question).filter(Question.id == question_id).first()
+    if not question:
+        raise HTTPException(status_code=404, detail="Item not found")
+    db.delete(question)
+    db.commit()
+    db.close()
+    return True
+
+# @router.post("/update_question")
+# def update_question(update: UpdateModel):
+#     original = update.original
+#     modified = update.modified
+
+#     # Find the database entry to update
+#     db_item = db.query(YourModel).filter(YourModel.id == original["id"]).first()
+#     if not db_item:
+#         raise HTTPException(status_code=404, detail="Item not found")
+
+#     # Compare and update fields if they have changed
+#     for field, value in modified.items():
+#         if original[field] != value:
+#             setattr(db_item, field, value)
+
+#     db.commit()
+#     return {"detail": "Updated successfully"}
 
 def generate_answer_feedback(correct_answer_text, student_answer_text, question):
     prompt = f"""
@@ -281,3 +318,18 @@ def generate_answer_feedback(correct_answer_text, student_answer_text, question)
     response = llm.stream_complete(prompt)
     stream_tokens = stream_completion_response_to_tokens(response)
     return StreamingResponse(stream_tokens)
+
+@router.get("/generate_latex")
+def generate_latex(equation):
+    prompt = f"""
+    equation: {equation}
+
+    --------------------------------------------------------
+    Your goal is to generate LaTex for the provided equation. \
+    Enclose your generated LaTex in '$$' at the start and end for proper rendering in Streamlit\
+    """
+
+    llm = OpenAI(model="gpt-4", temperature = 0)
+
+    response = llm.complete(prompt)
+    return response
