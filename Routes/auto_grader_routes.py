@@ -274,6 +274,10 @@ def delete_question(question_id: int):
     question = db.query(Question).filter(Question.id == question_id).first()
     if not question:
         raise HTTPException(status_code=404, detail="Item not found")
+    marking_scheme = db.query(MarkingScheme).where(MarkingScheme.question_id == question.id).first()
+    question_choices = db.query(QuestionChoice).where(QuestionChoice.question_id == question.id).all()
+    db.delete(marking_scheme)
+    db.delete(question_choices)
     db.delete(question)
     db.commit()
     db.close()
