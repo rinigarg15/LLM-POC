@@ -209,8 +209,9 @@ def create_user_question_paper(question_paper_id: int):
     db.add(user_question_paper)
     db.commit()
     user_question_paper_id = user_question_paper.id
+    num_questions = user_question_paper.question_paper.num_questions
     db.close()
-    return user_question_paper_id
+    return {"user_question_paper_id": user_question_paper_id, "num_questions": num_questions}
 
 @router.get("/questions/{question_paper_id}")
 def get_questions_for_paper(question_paper_id: int):
