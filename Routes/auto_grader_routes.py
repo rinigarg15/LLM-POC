@@ -95,8 +95,11 @@ def assessment_llm(user_question_paper):
     --------------------------------------------------------
     You are a friendly and helpful reviewer who has been given the lines\
     of feedback a student received in taking a MCQ test on the topic.
-    Your job is to create a relevant bulleted summary from the individual feedback\
+    Your job is to create a relevant and concise bulleted summary from the individual feedback\
     that can help the student hone his preparation on the given topic.
+    In your feedback, enclose any mathematical equation in LaTeX, \
+    using '$$' at the start and end of each LaTeX equation for proper rendering in Streamlit. \
+    Ensure that ONLY the mathematical equation is within these markers, not the entire text. \
     """
 
     llm = OpenAI(model="gpt-4", temperature = 0)
@@ -117,8 +120,11 @@ def assessment_tree_summarise(user_question_paper):
     query_text = f"""
         You are a friendly and helpful reviewer who has been given the lines\
         of feedback a student received in taking a MCQ test on the {topic}.
-        Your job is to create a relevant bulleted summary from the individual feedback\
+        Your job is to create a relevant and concise bulleted summary from the individual feedback\
         that can help the student hone his preparation on {topic}.
+        In your feedback, enclose any mathematical equation in LaTeX, \
+        using '$$' at the start and end of each LaTeX equation for proper rendering in Streamlit. \
+        Ensure that ONLY the mathematical equation is within these markers, not the entire text. \
     """
 
     texts = []
