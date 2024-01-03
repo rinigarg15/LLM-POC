@@ -97,6 +97,8 @@ def assessment_llm(user_question_paper):
     of feedback a student received in taking a MCQ test on the topic.
     Your job is to create a relevant and concise bulleted summary from the individual feedback\
     that can help the student hone his preparation on the given topic.
+    Articulate a generic feedback taking cues from the student's mistakes and \
+    avoid mentioning individual question feedback.
     In your feedback, enclose any mathematical equation in LaTeX, \
     using '$$' at the start and end of each LaTeX equation for proper rendering in Streamlit. \
     Ensure that ONLY the mathematical equation is within these markers, not the entire text. \
@@ -122,6 +124,8 @@ def assessment_tree_summarise(user_question_paper):
         of feedback a student received in taking a MCQ test on the {topic}.
         Your job is to create a relevant and concise bulleted summary from the individual feedback\
         that can help the student hone his preparation on {topic}.
+        Articulate a generic feedback taking cues from the student's mistakes and \
+        avoid mentioning individual question feedback.
         In your feedback, enclose any mathematical equation in LaTeX, \
         using '$$' at the start and end of each LaTeX equation for proper rendering in Streamlit. \
         Ensure that ONLY the mathematical equation is within these markers, not the entire text. \
