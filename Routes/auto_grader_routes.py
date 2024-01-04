@@ -275,31 +275,41 @@ def delete_question(question_id: int):
     if not question:
         raise HTTPException(status_code=404, detail="Item not found")
     marking_scheme = db.query(MarkingScheme).where(MarkingScheme.question_id == question.id).first()
-    question_choices = db.query(QuestionChoice).where(QuestionChoice.question_id == question.id).all()
     db.delete(marking_scheme)
-    db.delete(question_choices)
+    db.commit()
+    db.query(QuestionChoice).where(QuestionChoice.question_id == question.id).delete()
     db.delete(question)
     db.commit()
     db.close()
     return True
 
-# @router.post("/update_question")
-# def update_question(update: UpdateModel):
-#     original = update.original
-#     modified = update.modified
+@router.put("/questions/{question_id}")
+def update_question(question_id: int, form_data: Dict):
+    db = SessionLocal()
+    original_choices = form_data["original_questions_data"][1]
+    modified_choices = form_data["choices"]
+    question = db.query(Question).filter(Question.id == question_id).first()
+    correct_question_choice_id = form_data["original_questions_data"][2]
 
-#     # Find the database entry to update
-#     db_item = db.query(YourModel).filter(YourModel.id == original["id"]).first()
-#     if not db_item:
-#         raise HTTPException(status_code=404, detail="Item not found")
+    if not question:
+        raise HTTPException(status_code=404, detail="Item not found")
+    if question.question_text != form_data["question_text"]:
+        setattr(question, "question_text", form_data["question_text"])
 
-#     # Compare and update fields if they have changed
-#     for field, value in modified.items():
-#         if original[field] != value:
-#             setattr(db_item, field, value)
+    for original_choice, modified_choice in zip(original_choices, modified_choices):
+        choice = db.query(QuestionChoice).filter(QuestionChoice.id == original_choice[1]).first()
+        if original_choice[0] != modified_choice["text"]:
+            if not choice:
+                raise HTTPException(status_code=404, detail="Item not found")
+            setattr(choice, "choice_text", modified_choice["text"])
 
-#     db.commit()
-#     return {"detail": "Updated successfully"}
+        if modified_choice["is_selected"] and correct_question_choice_id != choice.id:
+            marking_scheme = db.query(MarkingScheme).filter(MarkingScheme.correct_question_choice_id == correct_question_choice_id).first()
+            setattr(marking_scheme, "correct_question_choice_id", choice.id)
+
+    db.commit()
+    db.close()
+    return {"detail": "Updated successfully"}
 
 def generate_answer_feedback(correct_answer_text, student_answer_text, question):
     prompt = f"""
