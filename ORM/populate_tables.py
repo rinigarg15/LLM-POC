@@ -1,3 +1,4 @@
+from fastapi import HTTPException
 from ORM.auto_grader_orms import MarkingScheme, Question, QuestionChoice, QuestionPaper, SessionLocal, State
 from datetime import datetime
 from typing import Dict
@@ -32,4 +33,4 @@ def create_ques_and_ques_choices(form_data: Dict):
         db.rollback()
     db.close()
     if not marking_scheme:
-        return ""
+        raise HTTPException(status_code=404, detail="Please provide the correct option")
