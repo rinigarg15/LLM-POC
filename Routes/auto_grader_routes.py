@@ -259,13 +259,12 @@ def update_question(question_id: int, form_data: Dict):
     return {"detail": "Updated successfully"}
 
 @router.get("/generate_latex")
-def generate_latex(equation):
+def generate_latex(text):
     prompt = f"""
-    equation: {equation}
+    text: {text}
 
     --------------------------------------------------------
-    Your goal is to generate LaTex for the provided equation. \
-    Enclose your generated LaTex in '$$' at the start and end for proper rendering in Streamlit\
+    Please identify any LaTeX compatible components in the following text and convert them into their corresponding LaTeX code, enclosed in '$$'. Ensure that the original wording and structure of the text remain unchanged. Begin your response directly with the converted text, omitting any introductory phrases or explanations. The response should consist solely of the original text with the LaTeX compatible components replaced by their LaTeX code.
     """
 
     llm = OpenAI(model="gpt-4", temperature = 0)
