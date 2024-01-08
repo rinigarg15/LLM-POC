@@ -67,12 +67,12 @@ def get_db():
     finally:
         db.close()
 
-@router.post("/final_assessment")
+@router.get("/final_assessment")
 def final_assessment(user_question_paper_id: int):
     db = SessionLocal()
     user_question_paper = db.query(UserQuestionPaper).filter(UserQuestionPaper.id == user_question_paper_id).first()
-
-    if user_question_paper.score >= 5:
+    num_questions = db.query(Question).filter(Question.question_paper_id == user_question_paper.question_paper.id).count()
+    if user_question_paper.score == num_questions:
         def iter_string():
             yield "Great job! You got all your answers correct! Keep it up!".encode('utf-8')
 
@@ -84,9 +84,229 @@ def final_assessment(user_question_paper_id: int):
 def get_score(user_question_paper_id: int):
     db = SessionLocal()
     user_question_paper = db.query(UserQuestionPaper).filter(UserQuestionPaper.id == user_question_paper_id).first()
+    num_questions = db.query(Question).filter(Question.question_paper_id == user_question_paper.question_paper.id).count()
+    return f"""Your score is {user_question_paper.score} / {num_questions}"""
 
-    return f"""Your score is {user_question_paper.score} / {user_question_paper.question_paper.num_questions}"""
- 
+@router.post("/check_answer")
+def check_answer(question_id: int, student_answer_choice_id: int, user_question_paper_id: int):
+    db = SessionLocal()
+    marking_scheme = db.query(MarkingScheme).filter(MarkingScheme.question_id == question_id).first()
+    user_question_paper = db.query(UserQuestionPaper).filter(UserQuestionPaper.id == user_question_paper_id).first()
+
+    user_question_answer = db.query(UserQuestionAnswer).filter(UserQuestionAnswer.question_id == question_id, UserQuestionAnswer.user_question_paper == user_question_paper).first()
+    if not user_question_answer:
+        user_question_answer = UserQuestionAnswer(question_id=question_id, user_question_paper = user_question_paper, question_choice_id = student_answer_choice_id)
+        db.add(user_question_answer)
+    else:
+        user_question_answer.question_choice_id = student_answer_choice_id
+
+    if marking_scheme.correct_question_choice_id == student_answer_choice_id:
+        user_question_paper.score += 1
+        db.commit()
+        db.close()
+
+        return Response(json.dumps({"Correct": "Yes"}), media_type="application/json")
+    else:
+        db.commit()
+        db.close()
+        return Response(json.dumps({"Correct": "No"}), media_type="application/json")
+        
+    
+@router.get("/generate_feedback")
+def generate_feedback(question_id: int, student_answer_choice_id: int):
+    db = SessionLocal()
+    question = db.query(Question).filter(Question.id == question_id).first()
+    marking_scheme = db.query(MarkingScheme).filter(MarkingScheme.question_id == question_id).first()
+    correct_answer_choice = db.query(QuestionChoice).filter(QuestionChoice.id == marking_scheme.correct_question_choice_id).first().choice_text
+    student_answer_choice = db.query(QuestionChoice).filter(QuestionChoice.id == student_answer_choice_id).first().choice_text
+
+    return generate_answer_feedback(correct_answer_choice, student_answer_choice, question)
+    
+@router.post("/post_answer_feedback")
+def post_answer_feedback(question_id: int, user_question_paper_id: int, feedback):
+    db = SessionLocal()
+    user_question_paper = db.query(UserQuestionPaper).filter(UserQuestionPaper.id == user_question_paper_id).first()
+
+    user_question_answer = db.query(UserQuestionAnswer).filter(UserQuestionAnswer.question_id == question_id, UserQuestionAnswer.user_question_paper_id == user_question_paper.id).first()
+
+    user_question_answer.feedback = feedback
+
+    if user_question_paper.feedback:
+        user_question_paper.feedback += feedback
+    else:
+        user_question_paper.feedback = feedback
+
+    db.commit()
+    db.close()
+
+@router.post("/post_paper_feedback")
+def post_paper_feedback(user_question_paper_id: int, feedback):
+    db = SessionLocal()
+    user_question_paper = db.query(UserQuestionPaper).filter(UserQuestionPaper.id == user_question_paper_id).first()
+    user_question_paper.feedback = feedback
+
+    db.commit()
+    db.close()
+
+@router.get("/question_papers")
+def question_papers():
+    db = SessionLocal()
+    question_papers = db.query(QuestionPaper).filter(QuestionPaper.state == State.COMPLETED.value).all()
+    db.close()
+    return question_papers
+
+@router.post("/user_questions_paper")
+def create_user_question_paper(question_paper_id: int):
+    user_id = 1
+    db = SessionLocal()
+    user_question_paper = UserQuestionPaper(user_id=user_id, question_paper_id = question_paper_id, score = 0)
+    db.add(user_question_paper)
+    db.commit()
+    user_question_paper_id = user_question_paper.id
+    num_questions = db.query(Question).filter(Question.question_paper_id == question_paper_id).count()
+    db.close()
+    return {"user_question_paper_id": user_question_paper_id, "num_questions": num_questions}
+
+@router.get("/questions/{question_paper_id}")
+def get_questions_for_paper(question_paper_id: int):
+    db = SessionLocal()
+    result = []
+    questions = db.query(Question).filter(Question.question_paper_id == question_paper_id).all()
+    for question in questions:
+        question_choices = db.query(QuestionChoice).filter(QuestionChoice.question == question).all()
+        marking_scheme = db.query(MarkingScheme).filter(MarkingScheme.question_id == question.id).first()
+        questions_list = [(question.question_text, question.id), [(question_choice.choice_text, question_choice.id, question_choice.label) for question_choice in question_choices]]
+        if marking_scheme:
+            questions_list.append(marking_scheme.question_choice.label)
+        result.append(questions_list)
+
+    db.close()
+    return result
+
+@router.post("/create_question_paper")
+def create_question_paper(form_data: Dict = Body(...)):
+    question_paper_id = add_question_paper(form_data)
+    return question_paper_id
+
+@router.post("/create_question")
+def create_question(form_data: Dict = Body(...)):
+    create_ques_and_ques_choices(form_data)
+
+@router.get("/list_tests")
+def list_tests():
+    user_id = 1
+
+    db = SessionLocal()
+    user_question_papers = db.query(UserQuestionPaper).filter(UserQuestionPaper.user_id == user_id).all()
+    result = []
+    
+    for user_question_paper in user_question_papers:
+        num_questions = db.query(Question).filter(Question.question_paper_id == user_question_paper.question_paper.id).count()
+        result.append([user_question_paper.question_paper.name, user_question_paper.score, num_questions, user_question_paper.feedback])
+    db.close()
+    return Response(json.dumps(result), media_type="application/json")
+
+@router.post("/update_question_paper_state")
+def update_question_paper_state(question_paper_id: int, state: State):
+    db = SessionLocal()
+    question_paper = db.query(QuestionPaper).filter(QuestionPaper.id == question_paper_id).first()
+    question_paper.state = state
+    db.commit()
+    db.close()
+
+@router.delete("/delete_questions/{question_id}")
+def delete_question(question_id: int):
+    db = SessionLocal()
+    question = db.query(Question).filter(Question.id == question_id).first()
+    if not question:
+        raise HTTPException(status_code=404, detail="Question not found")
+    marking_scheme = db.query(MarkingScheme).where(MarkingScheme.question_id == question.id).first()
+    db.delete(marking_scheme)
+    db.commit()
+    db.query(QuestionChoice).where(QuestionChoice.question_id == question.id).delete()
+    db.delete(question)
+    db.commit()
+    db.close()
+    return True
+
+@router.put("/questions/{question_id}")
+def update_question(question_id: int, form_data: Dict):
+    db = SessionLocal()
+    selected_option_id = form_data["selected_option"]
+
+    question = db.query(Question).filter(Question.id == question_id).first()
+    if not question:
+        raise HTTPException(status_code=404, detail="Question not found")
+    if question.question_text != form_data["question_text"]:
+        setattr(question, "question_text", form_data["question_text"])
+    
+    marking_scheme = db.query(MarkingScheme).filter(MarkingScheme.question_id == question_id).first()
+    if not marking_scheme:
+        raise HTTPException(status_code=404, detail="Marking Scheme not found")
+    
+    for label, choice_text in form_data["choices"].items():
+        choice = db.query(QuestionChoice).filter(QuestionChoice.label == label, QuestionChoice.question_id == question.id).first()
+        if not choice:
+            raise HTTPException(status_code=404, detail=f"Choice with label {label} not found")
+        if choice.choice_text != choice_text:
+            setattr(choice, "choice_text", choice_text)
+
+    if marking_scheme.correct_question_choice_id != selected_option_id:
+        setattr(marking_scheme, "correct_question_choice_id", selected_option_id)
+
+    db.commit()
+    db.close()
+    return {"detail": "Updated successfully"}
+
+@router.get("/generate_latex")
+def generate_latex(equation):
+    prompt = f"""
+    equation: {equation}
+
+    --------------------------------------------------------
+    Your goal is to generate LaTex for the provided equation. \
+    Enclose your generated LaTex in '$$' at the start and end for proper rendering in Streamlit\
+    """
+
+    llm = OpenAI(model="gpt-4", temperature = 0)
+
+    response = llm.complete(prompt)
+    return response
+
+def generate_answer_feedback(correct_answer_text, student_answer_text, question):
+    prompt = f"""
+    question: {question.question_text}
+    correct_answer: {correct_answer_text}
+    student_answer: {student_answer_text}
+    topic: {question.question_paper.topic}
+    standard: {question.question_paper.standard}
+
+    --------------------------------------------------------
+    You are an upbeat and friendly tutor with an encouraging tone who has been provided the \
+    correct_answer and the student_answer to a MCQ question for class standard on the given topic. \
+    All the 3 fields - correct_answer, student_answer, and question are in LaTeX.
+    The student_answer is wrong.
+    Your goal is to generate concise feedback to help the student, \
+    with the important points highlighted in bold. The feedback should be appropriate for students in class standard, \
+    taking into account both the topic and their level of understanding.
+    Perform the following actions:
+    1) Politely inform the student of the correct_answer.
+    2) Generate appropriate bulleted feedback \
+    by taking into account both the topic and that the feedback is meant for class standard students,
+    so that the student doesn't make the same mistake again.
+    Always include a "Avoid this mistake in future" section in your feedback.
+    In your feedback, enclose any mathematical equation in LaTeX, \
+    using '$$' at the start and end of each LaTeX equation for proper rendering in Streamlit. \
+    Ensure that ONLY the mathematical equation is within these markers, not the entire text. \
+    Do not address the student by saying "Dear student".
+    """
+
+    llm = OpenAI(model="gpt-4", temperature = 0)
+
+    response = llm.stream_complete(prompt)
+    stream_tokens = stream_completion_response_to_tokens(response)
+    return StreamingResponse(stream_tokens)
+
 def assessment_llm(user_question_paper):
     prompt = f"""
     feedback: {user_question_paper.feedback}
@@ -142,219 +362,3 @@ def assessment_tree_summarise(user_question_paper):
         texts
     )
     return StreamingResponse(response)
-
-@router.post("/check_answer")
-def check_answer(question_id: int, student_answer_choice_id: int, user_question_paper_id: int):
-    db = SessionLocal()
-    marking_scheme = db.query(MarkingScheme).filter(MarkingScheme.question_id == question_id).first()
-    user_question_paper = db.query(UserQuestionPaper).filter(UserQuestionPaper.id == user_question_paper_id).first()
-
-    user_question_answer = db.query(UserQuestionAnswer).filter(UserQuestionAnswer.question_id == question_id, UserQuestionAnswer.user_question_paper == user_question_paper).first()
-    if not user_question_answer:
-        user_question_answer = UserQuestionAnswer(question_id=question_id, user_question_paper = user_question_paper, question_choice_id = student_answer_choice_id)
-        db.add(user_question_answer)
-    else:
-        user_question_answer.question_choice_id = student_answer_choice_id
-
-    if marking_scheme.correct_question_choice_id == student_answer_choice_id:
-        user_question_paper.score += 1
-        db.commit()
-        db.close()
-
-        return Response(json.dumps({"Correct": "Yes"}), media_type="application/json")
-    else:
-        db.commit()
-        db.close()
-        return Response(json.dumps({"Correct": "No"}), media_type="application/json")
-        
-    
-@router.post("/generate_feedback")
-def generate_feedback(question_id: int, student_answer_choice_id: int):
-    db = SessionLocal()
-    question = db.query(Question).filter(Question.id == question_id).first()
-    marking_scheme = db.query(MarkingScheme).filter(MarkingScheme.question_id == question_id).first()
-    correct_answer_choice = db.query(QuestionChoice).filter(QuestionChoice.id == marking_scheme.correct_question_choice_id).first().choice_text
-    student_answer_choice = db.query(QuestionChoice).filter(QuestionChoice.id == student_answer_choice_id).first().choice_text
-
-    return generate_answer_feedback(correct_answer_choice, student_answer_choice, question)
-    
-@router.post("/post_answer_feedback")
-def post_answer_feedback(question_id: int, user_question_paper_id: int, feedback):
-    db = SessionLocal()
-    user_question_paper = db.query(UserQuestionPaper).filter(UserQuestionPaper.id == user_question_paper_id).first()
-
-    user_question_answer = db.query(UserQuestionAnswer).filter(UserQuestionAnswer.question_id == question_id, UserQuestionAnswer.user_question_paper_id == user_question_paper.id).first()
-
-    user_question_answer.feedback = feedback
-
-    if user_question_paper.feedback:
-        user_question_paper.feedback += feedback
-    else:
-        user_question_paper.feedback = feedback
-
-    db.commit()
-    db.close()
-
-@router.post("/post_paper_feedback")
-def post_paper_feedback(user_question_paper_id: int, feedback):
-    db = SessionLocal()
-    user_question_paper = db.query(UserQuestionPaper).filter(UserQuestionPaper.id == user_question_paper_id).first()
-    user_question_paper.feedback = feedback
-
-    db.commit()
-    db.close()
-
-@router.get("/question_papers")
-def question_papers():
-    db = SessionLocal()
-    question_papers = db.query(QuestionPaper).filter(QuestionPaper.state == State.COMPLETED.value).all()
-    db.close()
-    return question_papers
-
-@router.post("/user_questions_paper")
-def create_user_question_paper(question_paper_id: int):
-    user_id = 1
-    db = SessionLocal()
-    user_question_paper = UserQuestionPaper(user_id=user_id, question_paper_id = question_paper_id, score = 0)
-    db.add(user_question_paper)
-    db.commit()
-    user_question_paper_id = user_question_paper.id
-    num_questions = user_question_paper.question_paper.num_questions
-    db.close()
-    return {"user_question_paper_id": user_question_paper_id, "num_questions": num_questions}
-
-@router.get("/questions/{question_paper_id}")
-def get_questions_for_paper(question_paper_id: int):
-    db = SessionLocal()
-    result = []
-    questions = db.query(Question).filter(Question.question_paper_id == question_paper_id).all()
-    for question in questions:
-        question_choices = db.query(QuestionChoice).filter(QuestionChoice.question == question).all()
-        marking_scheme = db.query(MarkingScheme).filter(MarkingScheme.question_id == question.id).first()
-        questions_list = [(question.question_text, question.id), [(question_choice.choice_text, question_choice.id) for question_choice in question_choices]]
-        if marking_scheme:
-            questions_list.append(marking_scheme.correct_question_choice_id)
-        result.append(questions_list)
-
-    db.close()
-    return result
-
-@router.post("/create_question_paper")
-def create_question_paper(form_data: Dict = Body(...)):
-    question_paper_id = add_question_paper(form_data)
-    return question_paper_id
-
-@router.post("/create_question")
-def create_question(form_data: Dict = Body(...)):
-    create_ques_and_ques_choices(form_data)
-
-@router.get("/list_tests")
-def list_tests():
-    user_id = 1
-
-    db = SessionLocal()
-    user_question_papers = db.query(UserQuestionPaper).filter(UserQuestionPaper.user_id == user_id).all()
-    result = []
-    for user_question_paper in user_question_papers:
-        result.append([user_question_paper.question_paper.name, user_question_paper.score, user_question_paper.question_paper.num_questions, user_question_paper.feedback])
-    db.close()
-    return Response(json.dumps(result), media_type="application/json")
-
-@router.post("/update_question_paper_state")
-def update_question_paper_state(question_paper_id: int, state: State):
-    db = SessionLocal()
-    question_paper = db.query(QuestionPaper).filter(QuestionPaper.id == question_paper_id).first()
-    question_paper.state = state
-    db.commit()
-    db.close()
-
-@router.delete("/delete_questions/{question_id}")
-def delete_question(question_id: int):
-    db = SessionLocal()
-    question = db.query(Question).filter(Question.id == question_id).first()
-    if not question:
-        raise HTTPException(status_code=404, detail="Item not found")
-    marking_scheme = db.query(MarkingScheme).where(MarkingScheme.question_id == question.id).first()
-    db.delete(marking_scheme)
-    db.commit()
-    db.query(QuestionChoice).where(QuestionChoice.question_id == question.id).delete()
-    db.delete(question)
-    db.commit()
-    db.close()
-    return True
-
-@router.put("/questions/{question_id}")
-def update_question(question_id: int, form_data: Dict):
-    db = SessionLocal()
-    original_choices = form_data["original_questions_data"][1]
-    modified_choices = form_data["choices"]
-    question = db.query(Question).filter(Question.id == question_id).first()
-    correct_question_choice_id = form_data["original_questions_data"][2]
-
-    if not question:
-        raise HTTPException(status_code=404, detail="Item not found")
-    if question.question_text != form_data["question_text"]:
-        setattr(question, "question_text", form_data["question_text"])
-
-    for original_choice, modified_choice in zip(original_choices, modified_choices):
-        choice = db.query(QuestionChoice).filter(QuestionChoice.id == original_choice[1]).first()
-        if original_choice[0] != modified_choice["text"]:
-            if not choice:
-                raise HTTPException(status_code=404, detail="Item not found")
-            setattr(choice, "choice_text", modified_choice["text"])
-
-        if modified_choice["is_selected"] and correct_question_choice_id != choice.id:
-            marking_scheme = db.query(MarkingScheme).filter(MarkingScheme.correct_question_choice_id == correct_question_choice_id).first()
-            setattr(marking_scheme, "correct_question_choice_id", choice.id)
-
-    db.commit()
-    db.close()
-    return {"detail": "Updated successfully"}
-
-def generate_answer_feedback(correct_answer_text, student_answer_text, question):
-    prompt = f"""
-    question: {question.question_text}
-    correct_answer: {correct_answer_text}
-    student_answer: {student_answer_text}
-    topic: {question.question_paper.topic}
-    standard: {question.question_paper.standard}
-
-    --------------------------------------------------------
-    You are an upbeat and friendly tutor with an encouraging tone who has been provided the \
-    correct_answer and the student_answer to a MCQ question for class standard on the given topic. \
-    All the 3 fields - correct_answer, student_answer, and question are in LaTeX.
-    The student_answer is wrong.
-    Your goal is to generate concise feedback to help the student, \
-    with the important points highlighted in bold. The feedback should be appropriate for students in class standard, \
-    taking into account both the topic and their level of understanding.
-    Perform the following actions:
-    1) Politely inform the student of the correct_answer.
-    2) Generate appropriate bulleted feedback \
-    by taking into account both the topic and that the feedback is meant for class standard students,
-    so that the student doesn't make the same mistake again.
-    In your feedback, enclose any mathematical equation in LaTeX, \
-    using '$$' at the start and end of each LaTeX equation for proper rendering in Streamlit. \
-    Ensure that ONLY the mathematical equation is within these markers, not the entire text. \
-    Do not address the student by saying "Dear student".
-    """
-
-    llm = OpenAI(model="gpt-4", temperature = 0)
-
-    response = llm.stream_complete(prompt)
-    stream_tokens = stream_completion_response_to_tokens(response)
-    return StreamingResponse(stream_tokens)
-
-@router.get("/generate_latex")
-def generate_latex(equation):
-    prompt = f"""
-    equation: {equation}
-
-    --------------------------------------------------------
-    Your goal is to generate LaTex for the provided equation. \
-    Enclose your generated LaTex in '$$' at the start and end for proper rendering in Streamlit\
-    """
-
-    llm = OpenAI(model="gpt-4", temperature = 0)
-
-    response = llm.complete(prompt)
-    return response

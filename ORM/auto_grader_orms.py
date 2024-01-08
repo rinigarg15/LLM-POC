@@ -40,7 +40,6 @@ class QuestionPaper(Base):
     id = Column(Integer, primary_key=True)
     name = Column(String(50), nullable=False)
     topic = Column(String(100), nullable=False)
-    num_questions = Column(Integer, nullable=False)
     type = Column(String(100), nullable=False)
     instructions = Column(Text)
     information = Column(Text)

@@ -21,13 +21,16 @@ def create_ques_and_ques_choices(form_data: Dict):
     db.commit()
     marking_scheme = None
 
-    for label, choice_text_dict in form_data['choices'].items():
-        question_choice = QuestionChoice(choice_text = choice_text_dict["text"], question = question, label = label)
+    for label, choice_text in form_data['choices'].items():
+        if not choice_text:
+            continue
+        question_choice = QuestionChoice(choice_text = choice_text, question = question, label = label)
         db.add(question_choice)
-        if choice_text_dict["is_selected"]:
+        db.commit()
+        if label == form_data["selected_option"]:
             marking_scheme = MarkingScheme(question=question, question_choice= question_choice, marks = 1)
             db.add(marking_scheme)
-        db.commit()
+            db.commit()
 
     if not marking_scheme:
         db.rollback()
