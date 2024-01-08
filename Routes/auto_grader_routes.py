@@ -66,21 +66,8 @@ def get_db():
         yield db
     finally:
         db.close()
-
-@router.get("/final_assessment")
-def final_assessment(user_question_paper_id: int):
-    db = SessionLocal()
-    user_question_paper = db.query(UserQuestionPaper).filter(UserQuestionPaper.id == user_question_paper_id).first()
-    num_questions = db.query(Question).filter(Question.question_paper_id == user_question_paper.question_paper.id).count()
-    if user_question_paper.score == num_questions:
-        def iter_string():
-            yield "Great job! You got all your answers correct! Keep it up!".encode('utf-8')
-
-        return StreamingResponse(io.BytesIO(b"".join(iter_string())))
-    else:
-        return assessment_llm(user_question_paper)
     
-@router.get("/get_score")
+@router.get("/score")
 def get_score(user_question_paper_id: int):
     db = SessionLocal()
     user_question_paper = db.query(UserQuestionPaper).filter(UserQuestionPaper.id == user_question_paper_id).first()
@@ -112,8 +99,8 @@ def check_answer(question_id: int, student_answer_choice_id: int, user_question_
         return Response(json.dumps({"Correct": "No"}), media_type="application/json")
         
     
-@router.get("/generate_feedback")
-def generate_feedback(question_id: int, student_answer_choice_id: int):
+@router.get("/answer_feedback")
+def get_answer_feedback(question_id: int, student_answer_choice_id: int):
     db = SessionLocal()
     question = db.query(Question).filter(Question.id == question_id).first()
     marking_scheme = db.query(MarkingScheme).filter(MarkingScheme.question_id == question_id).first()
@@ -122,7 +109,7 @@ def generate_feedback(question_id: int, student_answer_choice_id: int):
 
     return generate_answer_feedback(correct_answer_choice, student_answer_choice, question)
     
-@router.post("/post_answer_feedback")
+@router.post("/answer_feedback")
 def post_answer_feedback(question_id: int, user_question_paper_id: int, feedback):
     db = SessionLocal()
     user_question_paper = db.query(UserQuestionPaper).filter(UserQuestionPaper.id == user_question_paper_id).first()
@@ -139,8 +126,21 @@ def post_answer_feedback(question_id: int, user_question_paper_id: int, feedback
     db.commit()
     db.close()
 
-@router.post("/post_paper_feedback")
-def post_paper_feedback(user_question_paper_id: int, feedback):
+@router.get("/test_feedback")
+def get_test_feedback(user_question_paper_id: int):
+    db = SessionLocal()
+    user_question_paper = db.query(UserQuestionPaper).filter(UserQuestionPaper.id == user_question_paper_id).first()
+    num_questions = db.query(Question).filter(Question.question_paper_id == user_question_paper.question_paper.id).count()
+    if user_question_paper.score == num_questions:
+        def iter_string():
+            yield "Great job! You got all your answers correct! Keep it up!".encode('utf-8')
+
+        return StreamingResponse(io.BytesIO(b"".join(iter_string())))
+    else:
+        return assessment_llm(user_question_paper)
+
+@router.post("/test_feedback")
+def post_test_feedback(user_question_paper_id: int, feedback):
     db = SessionLocal()
     user_question_paper = db.query(UserQuestionPaper).filter(UserQuestionPaper.id == user_question_paper_id).first()
     user_question_paper.feedback = feedback
@@ -183,16 +183,16 @@ def get_questions_for_paper(question_paper_id: int):
     db.close()
     return result
 
-@router.post("/create_question_paper")
+@router.post("/question_paper")
 def create_question_paper(form_data: Dict = Body(...)):
     question_paper_id = add_question_paper(form_data)
     return question_paper_id
 
-@router.post("/create_question")
+@router.post("/question")
 def create_question(form_data: Dict = Body(...)):
     create_ques_and_ques_choices(form_data)
 
-@router.get("/list_tests")
+@router.get("/tests")
 def list_tests():
     user_id = 1
 
@@ -206,7 +206,7 @@ def list_tests():
     db.close()
     return Response(json.dumps(result), media_type="application/json")
 
-@router.post("/update_question_paper_state")
+@router.put("/question_paper/{question_paper_id}")
 def update_question_paper_state(question_paper_id: int, state: State):
     db = SessionLocal()
     question_paper = db.query(QuestionPaper).filter(QuestionPaper.id == question_paper_id).first()
@@ -214,7 +214,7 @@ def update_question_paper_state(question_paper_id: int, state: State):
     db.commit()
     db.close()
 
-@router.delete("/delete_questions/{question_id}")
+@router.delete("/questions/{question_id}")
 def delete_question(question_id: int):
     db = SessionLocal()
     question = db.query(Question).filter(Question.id == question_id).first()
