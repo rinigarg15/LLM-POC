@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from fastapi import APIRouter, Depends, HTTPException, Response, UploadFile
 from fastapi.security import OAuth2PasswordRequestForm
 from fastapi_login import LoginManager
-from ORM.auto_grader_orms import MarkingScheme, Question, QuestionChoice, QuestionPaper, SessionLocal, User, UserQuestionAnswer, UserQuestionPaper
+from ORM.auto_grader_orms import UnderstandingLevel, MarkingScheme, Question, QuestionChoice, QuestionPaper, SessionLocal, Tone, User, UserQuestionAnswer, UserQuestionPaper
 from llama_index.llm_predictor.utils import stream_completion_response_to_tokens
 from fastapi.responses import StreamingResponse
 from llama_index import ServiceContext
@@ -60,19 +60,19 @@ router = APIRouter()
 #         file_object.write(file.file.read())
 #     return file_location
 
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+# def get_db():
+#     db = SessionLocal()
+#     try:
+#         yield db
+#     finally:
+#         db.close()
     
 @router.get("/score")
 def get_score(user_question_paper_id: int):
     db = SessionLocal()
     user_question_paper = db.query(UserQuestionPaper).filter(UserQuestionPaper.id == user_question_paper_id).first()
     num_questions = db.query(Question).filter(Question.question_paper_id == user_question_paper.question_paper.id).count()
-    return f"""Your score is {user_question_paper.score} / {num_questions}"""
+    return user_question_paper.score
 
 @router.post("/check_answer")
 def check_answer(question_id: int, student_answer_choice_id: int, user_question_paper_id: int):
@@ -100,14 +100,15 @@ def check_answer(question_id: int, student_answer_choice_id: int, user_question_
         
     
 @router.get("/answer_feedback")
-def get_answer_feedback(question_id: int, student_answer_choice_id: int):
+def get_answer_feedback(question_id: int, student_answer_choice_id: int, user_question_paper_id: int):
     db = SessionLocal()
     question = db.query(Question).filter(Question.id == question_id).first()
     marking_scheme = db.query(MarkingScheme).filter(MarkingScheme.question_id == question_id).first()
     correct_answer_choice = db.query(QuestionChoice).filter(QuestionChoice.id == marking_scheme.correct_question_choice_id).first().choice_text
     student_answer_choice = db.query(QuestionChoice).filter(QuestionChoice.id == student_answer_choice_id).first().choice_text
+    user_question_paper = db.query(UserQuestionPaper).filter(UserQuestionPaper.id == user_question_paper_id).first()
 
-    return generate_answer_feedback(correct_answer_choice, student_answer_choice, question)
+    return generate_answer_feedback(correct_answer_choice, student_answer_choice, question, user_question_paper)
     
 @router.post("/answer_feedback")
 def post_answer_feedback(question_id: int, user_question_paper_id: int, feedback):
@@ -148,6 +149,48 @@ def post_test_feedback(user_question_paper_id: int, feedback):
     db.commit()
     db.close()
 
+@router.get("/next_steps")
+def get_next_steps(question_id: int, user_question_paper_id: int):
+    db = SessionLocal()
+    question = db.query(Question).filter(Question.id == question_id).first()
+    marking_scheme = db.query(MarkingScheme).filter(MarkingScheme.question_id == question_id).first()
+    correct_choice_text = db.query(QuestionChoice).filter(QuestionChoice.id == marking_scheme.correct_question_choice_id).first().choice_text
+    user_question_paper = db.query(UserQuestionPaper).filter(UserQuestionPaper.id == user_question_paper_id).first()
+
+    return generate_advanced_next_steps(correct_choice_text, question, user_question_paper.tone)
+    
+@router.post("/next_steps")
+def post_next_steps(question_id: int, user_question_paper_id: int, next_steps):
+    db = SessionLocal()
+    user_question_paper = db.query(UserQuestionPaper).filter(UserQuestionPaper.id == user_question_paper_id).first()
+
+    user_question_answer = db.query(UserQuestionAnswer).filter(UserQuestionAnswer.question_id == question_id, UserQuestionAnswer.user_question_paper_id == user_question_paper.id).first()
+
+    user_question_answer.next_steps = next_steps
+
+    if user_question_paper.next_steps:
+        user_question_paper.next_steps += next_steps
+    else:
+        user_question_paper.next_steps = next_steps
+
+    db.commit()
+    db.close()
+
+@router.get("/test_next_steps")
+def get_test_next_steps(user_question_paper_id: int):
+    db = SessionLocal()
+    user_question_paper = db.query(UserQuestionPaper).filter(UserQuestionPaper.id == user_question_paper_id).first()
+    return next_steps_llm(user_question_paper)
+
+@router.post("/test_next_steps")
+def post_test_next_steps(user_question_paper_id: int, next_steps):
+    db = SessionLocal()
+    user_question_paper = db.query(UserQuestionPaper).filter(UserQuestionPaper.id == user_question_paper_id).first()
+    user_question_paper.next_steps = next_steps
+
+    db.commit()
+    db.close()
+
 @router.get("/question_papers")
 def question_papers():
     db = SessionLocal()
@@ -156,10 +199,10 @@ def question_papers():
     return question_papers
 
 @router.post("/user_questions_paper")
-def create_user_question_paper(question_paper_id: int):
+def create_user_question_paper(question_paper_id: int, understanding_level: UnderstandingLevel, tone: Tone):
     user_id = 1
     db = SessionLocal()
-    user_question_paper = UserQuestionPaper(user_id=user_id, question_paper_id = question_paper_id, score = 0)
+    user_question_paper = UserQuestionPaper(user_id=user_id, question_paper_id = question_paper_id, score = 0, understanding_level = understanding_level, tone = tone)
     db.add(user_question_paper)
     db.commit()
     user_question_paper_id = user_question_paper.id
@@ -272,33 +315,81 @@ def generate_latex(text):
     response = llm.complete(prompt)
     return response
 
-def generate_answer_feedback(correct_answer_text, student_answer_text, question):
+@router.get("/show_next_steps")
+def show_next_steps(user_question_paper_id: int):
+    db = SessionLocal()
+    user_question_paper = db.query(UserQuestionPaper).filter(UserQuestionPaper.id == user_question_paper_id).first()
+
+    if user_question_paper.next_steps:
+        return True
+    return False
+
+def generate_advanced_next_steps(correct_answer_text, question, tone):
+    grade = {question.question_paper.grade}
+    understanding_level = UnderstandingLevel.ADVANCED
+    topic =  {question.question_paper.topic}
+    prompt = f"""
+    question: {question.question_text}
+    correct_answer: {correct_answer_text}
+
+    --------------------------------------------------------
+    You are a tutor with a very {tone} style of communication who has been provided the \
+    correct_answer to a MCQ question for class {grade} on the given {topic}. \
+    The fields correct_answer and question are in LaTeX.
+    The student has answered the question correctly.
+    Your goal is to generate concise next steps to help a student \
+    who already has an Advanced understanding of this {topic}, deepen it with
+    the important points highlighted in bold. The next steps should be appropriate for students in class {grade}, \
+    taking into account the {topic}.
+    Perform the following actions:
+    1) Generate appropriate bulleted next steps with a very {tone} style of communication\
+    by taking into account both the {topic} and the fact that the next steps are meant for class {grade} students\
+    with an Advanced understanding of this {topic}, with an aim to deepen their understanding on it.
+    In your next steps, enclose any LaTeX compatible component in LaTeX, \
+    using '$$' at the start and end of each LaTeX equation for proper rendering in Streamlit. \
+    Ensure that ONLY the LaTeX compatible component is within these markers, not the entire text. \
+    Do not address the student by saying "Dear student".
+    """
+
+
+    llm = OpenAI(model="gpt-4", temperature = 0)
+
+    response = llm.stream_complete(prompt)
+    stream_tokens = stream_completion_response_to_tokens(response)
+    return StreamingResponse(stream_tokens)
+
+def generate_answer_feedback(correct_answer_text, student_answer_text, question, user_question_paper):
+    grade =  {question.question_paper.grade}
+    understanding_level = user_question_paper.understanding_level
+    tone = user_question_paper.tone
+
     prompt = f"""
     question: {question.question_text}
     correct_answer: {correct_answer_text}
     student_answer: {student_answer_text}
     topic: {question.question_paper.topic}
-    standard: {question.question_paper.standard}
 
     --------------------------------------------------------
-    You are an upbeat and friendly tutor with an encouraging tone who has been provided the \
-    correct_answer and the student_answer to a MCQ question for class standard on the given topic. \
+    You are a tutor with a very {tone} style of communication who has been provided the \
+    correct_answer and the student_answer to a MCQ question for class {grade} on the given topic. \
     All the 3 fields - correct_answer, student_answer, and question are in LaTeX.
     The student_answer is wrong.
     Your goal is to generate concise feedback to help the student, \
-    with the important points highlighted in bold. The feedback should be appropriate for students in class standard, \
-    taking into account both the topic and their level of understanding.
+    with the important points highlighted in bold. The feedback should be appropriate for students in class {grade}, \
+    taking into account both the topic and their {understanding_level} level understanding on the topic.
     Perform the following actions:
-    1) Politely inform the student of the correct_answer.
-    2) Generate appropriate bulleted feedback \
-    by taking into account both the topic and that the feedback is meant for class standard students,
+    1) Inform the student of the correct_answer.
+    2) Generate appropriate bulleted feedback with a very {tone} style of communication\
+    by taking into account both the topic and that the feedback is meant for class {grade} students\
+    with a {understanding_level} level understanding on the topic,
     so that the student doesn't make the same mistake again.
     Always include a "Avoid this mistake in future" section in your feedback.
-    In your feedback, enclose any mathematical equation in LaTeX, \
+    In your feedback, enclose any LaTeX compatible component in LaTeX, \
     using '$$' at the start and end of each LaTeX equation for proper rendering in Streamlit. \
-    Ensure that ONLY the mathematical equation is within these markers, not the entire text. \
+    Ensure that ONLY the LaTeX compatible component is within these markers, not the entire text. \
     Do not address the student by saying "Dear student".
     """
+
 
     llm = OpenAI(model="gpt-4", temperature = 0)
 
@@ -307,20 +398,48 @@ def generate_answer_feedback(correct_answer_text, student_answer_text, question)
     return StreamingResponse(stream_tokens)
 
 def assessment_llm(user_question_paper):
+    understanding_level = user_question_paper.understanding_level
+    tone = user_question_paper.tone
+
     prompt = f"""
     feedback: {user_question_paper.feedback}
     topic: {user_question_paper.question_paper.topic}
     
     --------------------------------------------------------
-    You are a friendly and helpful reviewer who has been given the lines\
+    You are a tutor with a very {tone} style of communication who has been given the lines\
     of feedback a student received in taking a MCQ test on the topic.
     Your job is to create a relevant and concise bulleted summary from the individual feedback\
-    that can help the student hone his preparation on the given topic.
+    that can help the student with a {understanding_level} level understanding on the topic hone his preparation.
     Articulate a generic feedback taking cues from the student's mistakes and \
     avoid mentioning individual question feedback.
-    In your feedback, enclose any mathematical equation in LaTeX, \
+    In your feedback, enclose any LaTeX compatible component in LaTeX, \
     using '$$' at the start and end of each LaTeX equation for proper rendering in Streamlit. \
-    Ensure that ONLY the mathematical equation is within these markers, not the entire text. \
+    Ensure that ONLY the LaTeX compatible component is within these markers, not the entire text. \
+    """
+
+    llm = OpenAI(model="gpt-4", temperature = 0)
+
+    response = llm.stream_complete(prompt)
+    stream_tokens = stream_completion_response_to_tokens(response)
+    return StreamingResponse(stream_tokens)
+
+def next_steps_llm(user_question_paper):
+    understanding_level = user_question_paper.understanding_level
+    tone = user_question_paper.tone
+    topic = {user_question_paper.question_paper.topic}
+
+    prompt = f"""
+    next_steps: {user_question_paper.next_steps}
+    
+    --------------------------------------------------------
+    You are a tutor with a very {tone} style of communication who has been given the lines\
+    of next_steps a student received in taking a MCQ test on the {topic}, to deepen his understanding on the {topic}.
+    Your job is to create a relevant and concise bulleted summary from the individual next_steps\
+    that can help the student with a {understanding_level} level understanding on the {topic} to hone his preparation.
+    Articulate a generic summary and avoid mentioning individual question summary.
+    In your summary, enclose any LaTeX compatible component in LaTeX, \
+    using '$$' at the start and end of each LaTeX equation for proper rendering in Streamlit. \
+    Ensure that ONLY the LaTeX compatible component is within these markers, not the entire text. \
     """
 
     llm = OpenAI(model="gpt-4", temperature = 0)
@@ -333,21 +452,23 @@ def assessment_tree_summarise(user_question_paper):
     db = SessionLocal()
     user_question_answers= db.query(UserQuestionAnswer).filter(UserQuestionAnswer.user_question_paper_id == user_question_paper.id).all()
     topic = user_question_paper.question_paper.topic
+    understanding_level = user_question_paper.understanding_level
+    tone = user_question_paper.tone
 
     llm = OpenAI(model="gpt-4")
     service_context = ServiceContext.from_defaults(llm=llm)
     response_synthesizer = TreeSummarize(streaming = True, service_context=service_context)
 
     query_text = f"""
-        You are a friendly and helpful reviewer who has been given the lines\
-        of feedback a student received in taking a MCQ test on the {topic}.
-        Your job is to create a relevant and concise bulleted summary from the individual feedback\
-        that can help the student hone his preparation on {topic}.
-        Articulate a generic feedback taking cues from the student's mistakes and \
-        avoid mentioning individual question feedback.
-        In your feedback, enclose any mathematical equation in LaTeX, \
-        using '$$' at the start and end of each LaTeX equation for proper rendering in Streamlit. \
-        Ensure that ONLY the mathematical equation is within these markers, not the entire text. \
+    You are a tutor with a very {tone} style of communication who has been given the lines\
+    of feedback a student received in taking a MCQ test on the {topic}.
+    Your job is to create a relevant and concise bulleted summary from the individual feedback\
+    that can help the student with a {understanding_level} level understanding on the {topic} hone his preparation.
+    Articulate a generic feedback taking cues from the student's mistakes and \
+    avoid mentioning individual question feedback.
+    In your feedback, enclose any LaTeX compatible component in LaTeX, \
+    using '$$' at the start and end of each LaTeX equation for proper rendering in Streamlit. \
+    Ensure that ONLY the LaTeX compatible component is within these markers, not the entire text. \
     """
 
     texts = []

@@ -19,6 +19,28 @@ class State(PyEnum):
     COMPLETED = "Completed"
     DRAFTED = "Drafted"
 
+class UnderstandingLevel(PyEnum):
+    BEGINNER = "Beginner"
+    ADVANCED = "Advanced"
+
+class Topic(PyEnum):
+    PHYSICS = "Physics"
+    MATHS = "Maths"
+    ECONOMICS = "Economics"
+    ACCOUNTING = "Accounting"
+
+class Board(PyEnum):
+    IGCSE = "IGCSE"
+    ICSE = "ICSE"
+    CBSE = "CBSE"
+    IB = "International"
+
+class Tone(PyEnum):
+    FORMAL = "Formal"
+    CASUAL = "Casual"
+    GENZ = "Gen-Z"
+    HUMOUROUS = "Humourous"
+
 class User(Base):
     __tablename__ = 'user'
     id = Column(Integer, primary_key=True)
@@ -44,9 +66,9 @@ class QuestionPaper(Base):
     instructions = Column(Text)
     information = Column(Text)
     date = Column(DateTime, nullable=False)
-    duration = Column(Integer, nullable=False)
-    board = Column(String(50), nullable=False)
-    standard = Column(Integer, nullable=True)
+    duration = Column(Integer, nullable=True)
+    board = Column(SQLAlchemyEnum(Board), nullable=False)
+    grade = Column(Integer, nullable=True)
     state = Column(SQLAlchemyEnum(State), nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, onupdate=datetime.utcnow)
@@ -82,6 +104,9 @@ class UserQuestionPaper(Base):
     question_paper_id = Column(Integer, ForeignKey('question_paper.id'), nullable=False)
     score = Column(Integer, nullable=False)
     feedback = Column(Text)
+    next_steps = Column(Text)
+    tone = Column(SQLAlchemyEnum(Tone), nullable=False)
+    understanding_level = Column(SQLAlchemyEnum(UnderstandingLevel), nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, onupdate=datetime.utcnow)
 
@@ -96,6 +121,7 @@ class UserQuestionAnswer(Base):
     user_question_paper_id = Column(Integer, ForeignKey('user_question_paper.id'), nullable=False)
     question_choice_id = Column(Integer, ForeignKey('question_choice.id'), nullable=False)
     feedback = Column(Text)
+    next_steps = Column(Text)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, onupdate=datetime.utcnow)
 

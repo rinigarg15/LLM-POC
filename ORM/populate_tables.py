@@ -5,7 +5,7 @@ from typing import Dict
 
 def add_question_paper(form_data: Dict):
     db = SessionLocal()
-    question_paper = QuestionPaper(topic = form_data["topic"], type = "MCQ", date = datetime.fromisoformat(form_data["date"]), duration = form_data["duration"], board = form_data["board"], name = form_data["name"], standard = form_data["standard"], state = State.DRAFTED)
+    question_paper = QuestionPaper(topic = form_data["topic"], type = "MCQ", date = datetime.now(), duration = 30, board = form_data["board"], name = form_data["name"], grade = form_data["grade"], state = State.DRAFTED)
     db.add(question_paper)
     db.commit()
     question_paper_id = question_paper.id

@@ -4,6 +4,7 @@ from sqlalchemy import engine_from_config
 from sqlalchemy import pool
 
 from alembic import context
+import os
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
@@ -24,6 +25,13 @@ target_metadata = Base.metadata
 # can be acquired:
 # my_important_option = config.get_main_option("my_important_option")
 # ... etc.
+ssl_ca = os.getenv('CERT_FILE_PATH')  
+connect_args = {'ssl': {'ca': ssl_ca}}
+
+config.set_main_option(
+    "sqlalchemy.url",
+    f"mysql+pymysql://llmadmin:{os.getenv('SQL_DB_PWD')}@llmpocdb.mysql.database.azure.com:3306/auto_grader_db"
+)
 
 
 def run_migrations_offline() -> None:
@@ -57,13 +65,14 @@ def run_migrations_online() -> None:
     and associate a connection with the context.
 
     """
-    connectable = engine_from_config(
-        config.get_section(config.config_ini_section, {}),
-        prefix="sqlalchemy.",
+    engine = engine_from_config(
+        config.get_section(config.config_ini_section),
+        prefix='sqlalchemy.',
         poolclass=pool.NullPool,
+        connect_args=connect_args
     )
 
-    with connectable.connect() as connection:
+    with engine.connect() as connection:
         context.configure(
             connection=connection, target_metadata=target_metadata
         )
