@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from fastapi import APIRouter, Depends, HTTPException, Response, UploadFile
 from fastapi.security import OAuth2PasswordRequestForm
 from fastapi_login import LoginManager
+import tiktoken
 from ORM.auto_grader_orms import UnderstandingLevel, MarkingScheme, Question, QuestionChoice, QuestionPaper, SessionLocal, Tone, User, UserQuestionAnswer, UserQuestionPaper
 from llama_index.llm_predictor.utils import stream_completion_response_to_tokens
 from fastapi.responses import StreamingResponse
@@ -14,6 +15,7 @@ from llama_index.response_synthesizers.tree_summarize import TreeSummarize
 from fastapi import Body
 from typing import Dict
 from ORM.populate_tables import State, create_ques_and_ques_choices, add_question_paper
+from llama_index.callbacks import CallbackManager, TokenCountingHandler
 
 router = APIRouter()
 
@@ -391,11 +393,28 @@ def generate_answer_feedback(correct_answer_text, student_answer_text, question,
     """
 
 
-    llm = OpenAI(model="gpt-4", temperature = 0)
+    token_counter = TokenCountingHandler(tokenizer = tiktoken.encoding_for_model("gpt-4").encode)
 
-    response = llm.stream_complete(prompt)
-    stream_tokens = stream_completion_response_to_tokens(response)
-    return StreamingResponse(stream_tokens)
+    llm = OpenAI(model="gpt-4", temperature = 0, callback_manager = CallbackManager([token_counter]))
+
+    token_counter.reset_counts()
+    print(
+    "LLM Prompt Tokens: ",
+    token_counter.prompt_llm_token_count)
+    
+    response = llm.complete(prompt)
+    print(
+    "LLM Prompt Tokens: ",
+    token_counter.prompt_llm_token_count,
+    "\n",
+    "LLM Completion Tokens: ",
+    token_counter.completion_llm_token_count,
+    "\n",
+    "Total LLM Token Count: ",
+    token_counter.total_llm_token_count,
+    )
+    print("--------------")
+    return response
 
 def assessment_llm(user_question_paper):
     understanding_level = user_question_paper.understanding_level
