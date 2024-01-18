@@ -157,7 +157,7 @@ def get_next_steps(question_id: int, user_question_paper_id: int):
     correct_choice_text = db.query(QuestionChoice).filter(QuestionChoice.id == marking_scheme.correct_question_choice_id).first().choice_text
     user_question_paper = db.query(UserQuestionPaper).filter(UserQuestionPaper.id == user_question_paper_id).first()
 
-    return generate_advanced_next_steps(correct_choice_text, question, user_question_paper.tone)
+    return generate_next_steps(correct_choice_text, question, user_question_paper.tone)
     
 @router.post("/next_steps")
 def post_next_steps(question_id: int, user_question_paper_id: int, next_steps):
@@ -324,7 +324,7 @@ def show_next_steps(user_question_paper_id: int):
         return True
     return False
 
-def generate_advanced_next_steps(correct_answer_text, question, tone):
+def generate_next_steps(correct_answer_text, question, tone):
     grade = {question.question_paper.grade}
     understanding_level = UnderstandingLevel.ADVANCED
     topic =  {question.question_paper.topic}
@@ -338,13 +338,13 @@ def generate_advanced_next_steps(correct_answer_text, question, tone):
     The fields correct_answer and question are in LaTeX.
     The student has answered the question correctly.
     Your goal is to generate concise next steps to help a student \
-    who already has an Advanced understanding of this {topic}, deepen it with
+    who has a {understanding_level} level understanding of this {topic}, deepen it with
     the important points highlighted in bold. The next steps should be appropriate for students in class {grade}, \
     taking into account the {topic}.
     Perform the following actions:
     1) Generate appropriate bulleted next steps with a very {tone} style of communication\
     by taking into account both the {topic} and the fact that the next steps are meant for class {grade} students\
-    with an Advanced understanding of this {topic}, with an aim to deepen their understanding on it.
+    with a {understanding_level} level understanding of this {topic}, with an aim to deepen their understanding on it.
     In your next steps, enclose any LaTeX compatible component in LaTeX, \
     using '$$' at the start and end of each LaTeX equation for proper rendering in Streamlit. \
     Ensure that ONLY the LaTeX compatible component is within these markers, not the entire text. \
