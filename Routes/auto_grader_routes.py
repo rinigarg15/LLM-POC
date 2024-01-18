@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from fastapi import APIRouter, Depends, HTTPException, Response, UploadFile
 from fastapi.security import OAuth2PasswordRequestForm
 from fastapi_login import LoginManager
-from ORM.auto_grader_orms import UnderstandingLevel, MarkingScheme, Question, QuestionChoice, QuestionPaper, SessionLocal, Tone, User, UserQuestionAnswer, UserQuestionPaper
+from ORM.auto_grader_orms import FeedbackLength, UnderstandingLevel, MarkingScheme, Question, QuestionChoice, QuestionPaper, SessionLocal, Tone, User, UserQuestionAnswer, UserQuestionPaper
 from llama_index.llm_predictor.utils import stream_completion_response_to_tokens
 from fastapi.responses import StreamingResponse
 from llama_index import ServiceContext
@@ -14,6 +14,8 @@ from llama_index.response_synthesizers.tree_summarize import TreeSummarize
 from fastapi import Body
 from typing import Dict
 from ORM.populate_tables import State, create_ques_and_ques_choices, add_question_paper
+import tiktoken
+from llama_index.callbacks import CallbackManager, TokenCountingHandler
 
 router = APIRouter()
 
@@ -71,7 +73,6 @@ router = APIRouter()
 def get_score(user_question_paper_id: int):
     db = SessionLocal()
     user_question_paper = db.query(UserQuestionPaper).filter(UserQuestionPaper.id == user_question_paper_id).first()
-    num_questions = db.query(Question).filter(Question.question_paper_id == user_question_paper.question_paper.id).count()
     return user_question_paper.score
 
 @router.post("/check_answer")
@@ -92,11 +93,12 @@ def check_answer(question_id: int, student_answer_choice_id: int, user_question_
         db.commit()
         db.close()
 
-        return Response(json.dumps({"Correct": "Yes"}), media_type="application/json")
+        return{"correct": True}
     else:
+        correct_label = marking_scheme.question_choice.label
         db.commit()
         db.close()
-        return Response(json.dumps({"Correct": "No"}), media_type="application/json")
+        return {"correct": False, "correct_label": correct_label}
         
     
 @router.get("/answer_feedback")
@@ -157,7 +159,7 @@ def get_next_steps(question_id: int, user_question_paper_id: int):
     correct_choice_text = db.query(QuestionChoice).filter(QuestionChoice.id == marking_scheme.correct_question_choice_id).first().choice_text
     user_question_paper = db.query(UserQuestionPaper).filter(UserQuestionPaper.id == user_question_paper_id).first()
 
-    return generate_advanced_next_steps(correct_choice_text, question, user_question_paper.tone)
+    return generate_next_steps(correct_choice_text, question, user_question_paper)
     
 @router.post("/next_steps")
 def post_next_steps(question_id: int, user_question_paper_id: int, next_steps):
@@ -198,11 +200,11 @@ def question_papers():
     db.close()
     return question_papers
 
-@router.post("/user_questions_paper")
-def create_user_question_paper(question_paper_id: int, understanding_level: UnderstandingLevel, tone: Tone):
+@router.post("/user_question_papers")
+def create_user_question_paper(question_paper_id: int, understanding_level: UnderstandingLevel, tone: Tone, feedback_length: FeedbackLength):
     user_id = 1
     db = SessionLocal()
-    user_question_paper = UserQuestionPaper(user_id=user_id, question_paper_id = question_paper_id, score = 0, understanding_level = understanding_level, tone = tone)
+    user_question_paper = UserQuestionPaper(user_id=user_id, question_paper_id = question_paper_id, score = 0, understanding_level = understanding_level, tone = tone, feedback_length = feedback_length)
     db.add(user_question_paper)
     db.commit()
     user_question_paper_id = user_question_paper.id
@@ -324,40 +326,6 @@ def show_next_steps(user_question_paper_id: int):
         return True
     return False
 
-def generate_advanced_next_steps(correct_answer_text, question, tone):
-    grade = {question.question_paper.grade}
-    understanding_level = UnderstandingLevel.ADVANCED
-    topic =  {question.question_paper.topic}
-    prompt = f"""
-    question: {question.question_text}
-    correct_answer: {correct_answer_text}
-
-    --------------------------------------------------------
-    You are a tutor with a very {tone} style of communication who has been provided the \
-    correct_answer to a MCQ question for class {grade} on the given {topic}. \
-    The fields correct_answer and question are in LaTeX.
-    The student has answered the question correctly.
-    Your goal is to generate concise next steps to help a student \
-    who already has an Advanced understanding of this {topic}, deepen it with
-    the important points highlighted in bold. The next steps should be appropriate for students in class {grade}, \
-    taking into account the {topic}.
-    Perform the following actions:
-    1) Generate appropriate bulleted next steps with a very {tone} style of communication\
-    by taking into account both the {topic} and the fact that the next steps are meant for class {grade} students\
-    with an Advanced understanding of this {topic}, with an aim to deepen their understanding on it.
-    In your next steps, enclose any LaTeX compatible component in LaTeX, \
-    using '$$' at the start and end of each LaTeX equation for proper rendering in Streamlit. \
-    Ensure that ONLY the LaTeX compatible component is within these markers, not the entire text. \
-    Do not address the student by saying "Dear student".
-    """
-
-
-    llm = OpenAI(model="gpt-4", temperature = 0)
-
-    response = llm.stream_complete(prompt)
-    stream_tokens = stream_completion_response_to_tokens(response)
-    return StreamingResponse(stream_tokens)
-
 def generate_answer_feedback(correct_answer_text, student_answer_text, question, user_question_paper):
     grade =  {question.question_paper.grade}
     understanding_level = user_question_paper.understanding_level
@@ -378,8 +346,7 @@ def generate_answer_feedback(correct_answer_text, student_answer_text, question,
     with the important points highlighted in bold. The feedback should be appropriate for students in class {grade}, \
     taking into account both the topic and their {understanding_level} level understanding on the topic.
     Perform the following actions:
-    1) Inform the student of the correct_answer.
-    2) Generate appropriate bulleted feedback with a very {tone} style of communication\
+    1) Generate appropriate bulleted feedback with a very {tone} style of communication\
     by taking into account both the topic and that the feedback is meant for class {grade} students\
     with a {understanding_level} level understanding on the topic,
     so that the student doesn't make the same mistake again.
@@ -389,7 +356,6 @@ def generate_answer_feedback(correct_answer_text, student_answer_text, question,
     Ensure that ONLY the LaTeX compatible component is within these markers, not the entire text. \
     Do not address the student by saying "Dear student".
     """
-
 
     llm = OpenAI(model="gpt-4", temperature = 0)
 
@@ -416,6 +382,41 @@ def assessment_llm(user_question_paper):
     using '$$' at the start and end of each LaTeX equation for proper rendering in Streamlit. \
     Ensure that ONLY the LaTeX compatible component is within these markers, not the entire text. \
     """
+
+    llm = OpenAI(model="gpt-4", temperature = 0)
+
+    response = llm.stream_complete(prompt)
+    stream_tokens = stream_completion_response_to_tokens(response)
+    return StreamingResponse(stream_tokens)
+
+def generate_next_steps(correct_answer_text, question, user_question_paper):
+    grade = {question.question_paper.grade}
+    understanding_level = user_question_paper.understanding_level
+    topic =  {question.question_paper.topic}
+    tone = {user_question_paper.tone}
+    prompt = f"""
+    question: {question.question_text}
+    correct_answer: {correct_answer_text}
+
+    --------------------------------------------------------
+    You are a tutor with a very {tone} style of communication who has been provided the \
+    correct_answer to a MCQ question for class {grade} on the given {topic}. \
+    The fields correct_answer and question are in LaTeX.
+    The student has answered the question correctly.
+    Your goal is to generate concise next steps to help a student \
+    who has a {understanding_level} understanding of this {topic}, deepen it with
+    the important points highlighted in bold. The next steps should be appropriate for students in class {grade}, \
+    taking into account the {topic}.
+    Perform the following actions:
+    1) Generate appropriate bulleted next steps with a very {tone} style of communication\
+    by taking into account both the {topic} and the fact that the next steps are meant for class {grade} students\
+    with a {understanding_level} understanding of this {topic}, with an aim to deepen their understanding on it.
+    In your next steps, enclose any LaTeX compatible component in LaTeX, \
+    using '$$' at the start and end of each LaTeX equation for proper rendering in Streamlit. \
+    Ensure that ONLY the LaTeX compatible component is within these markers, not the entire text. \
+    Do not address the student by saying "Dear student".
+    """
+
 
     llm = OpenAI(model="gpt-4", temperature = 0)
 

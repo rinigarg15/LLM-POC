@@ -10,7 +10,7 @@ import os
 pwd = os.getenv("SQL_DB_PWD")
 ssl_args = {'ssl': {'ca': os.getenv("CERT_FILE_PATH")}}
 
-engine = create_engine(f'mysql+pymysql://llmadmin:{pwd}@llmpocdb.mysql.database.azure.com:3306/auto_grader_db', connect_args=ssl_args)
+engine = create_engine(f'mysql+pymysql://root:root@localhost:3306/auto_grader_db')
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 Base = declarative_base()
@@ -39,7 +39,13 @@ class Tone(PyEnum):
     FORMAL = "Formal"
     CASUAL = "Casual"
     GENZ = "Gen-Z"
-    HUMOUROUS = "Humourous"
+    HUMOROUS = "Humorous"
+
+class FeedbackLength(PyEnum):
+    ELABORATE = "Elaborate"
+    CONCISE = "Concise"
+    NO = "No"
+
 
 class User(Base):
     __tablename__ = 'user'
@@ -61,7 +67,7 @@ class QuestionPaper(Base):
     __tablename__ = 'question_paper'
     id = Column(Integer, primary_key=True)
     name = Column(String(50), nullable=False)
-    topic = Column(String(100), nullable=False)
+    topic = Column(SQLAlchemyEnum(Topic), nullable=False)
     type = Column(String(100), nullable=False)
     instructions = Column(Text)
     information = Column(Text)
@@ -107,6 +113,7 @@ class UserQuestionPaper(Base):
     next_steps = Column(Text)
     tone = Column(SQLAlchemyEnum(Tone), nullable=False)
     understanding_level = Column(SQLAlchemyEnum(UnderstandingLevel), nullable=False)
+    feedback_length = Column(SQLAlchemyEnum(FeedbackLength), nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, onupdate=datetime.utcnow)
 
