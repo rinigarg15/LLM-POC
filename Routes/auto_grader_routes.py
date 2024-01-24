@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from fastapi import APIRouter, Depends, HTTPException, Response, UploadFile
 from fastapi.security import OAuth2PasswordRequestForm
 from fastapi_login import LoginManager
+import tiktoken
 from ORM.auto_grader_orms import UnderstandingLevel, MarkingScheme, Question, QuestionChoice, QuestionPaper, SessionLocal, Tone, User, UserQuestionAnswer, UserQuestionPaper
 from llama_index.llms.llm import stream_completion_response_to_tokens, stream_chat_response_to_tokens
 from llama_index.llms import ChatMessage
@@ -352,12 +353,18 @@ def generate_next_steps(correct_answer_text, question, tone):
     Do not address the student by saying "Dear student".
     """
 
+    encoding = tiktoken.encoding_for_model("gpt-4")
+    print("LLM Prompt Tokens: ",len(encoding.encode(prompt)),"\n")
+
+    
 
     llm = OpenAI(model="gpt-4-1106-preview", temperature = 0)
     message = ChatMessage(role="user", content=prompt)
-
     response = llm.stream_chat([message])
     stream_tokens = stream_chat_response_to_tokens(response)
+    print("LLM Stream Tokens: ",stream_tokens, "\n")
+    print("LLM Stream Tokens count: ", len(stream_tokens), "\n")
+
     return StreamingResponse(stream_tokens)
 
 def generate_answer_feedback(correct_answer_text, student_answer_text, question, user_question_paper):
@@ -395,8 +402,16 @@ def generate_answer_feedback(correct_answer_text, student_answer_text, question,
     llm = OpenAI(model="gpt-4-1106-preview", temperature = 0)
     message = ChatMessage(role="user", content=prompt)
 
+    encoding = tiktoken.encoding_for_model("gpt-4")
+    print("LLM Prompt Tokens: ", len(encoding.encode(prompt)), "\n")
+
+    llm = OpenAI(model="gpt-4-1106-preview", temperature = 0)
+    message = ChatMessage(role="user", content=prompt)
     response = llm.stream_chat([message])
     stream_tokens = stream_chat_response_to_tokens(response)
+
+    print("LLM Stream Tokens: ",stream_tokens, "\n")
+
     return StreamingResponse(stream_tokens)
 
 def assessment_llm(user_question_paper):
