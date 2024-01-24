@@ -24,7 +24,7 @@ from video_helper import extract_video_id
 from fastapi.responses import StreamingResponse
 import math
 from persistence import from_persist_path, persist_node_texts, DEFAULT_NODE_TEXT_LIST_KEY
-from llama_index.llm_predictor.utils import stream_completion_response_to_tokens
+from llama_index.llms.llm import stream_completion_response_to_tokens
 from googleapiclient.discovery import build
 from Routes import topic_routes, auto_grader_routes
 import isodate
