@@ -9,6 +9,8 @@ from fastapi_login import LoginManager
 import tiktoken
 from ORM.auto_grader_orms import UnderstandingLevel, MarkingScheme, Question, QuestionChoice, QuestionPaper, SessionLocal, Tone, User, UserQuestionAnswer, UserQuestionPaper
 from llama_index.llms.llm import stream_completion_response_to_tokens, stream_chat_response_to_tokens
+from llama_index.core.llms.types import ChatResponseGen
+from llama_index.types import TokenGen
 from llama_index.llms import ChatMessage
 from fastapi.responses import StreamingResponse
 from llama_index import ServiceContext
@@ -16,6 +18,7 @@ from llama_index.response_synthesizers.tree_summarize import TreeSummarize
 from fastapi import Body
 from typing import Dict
 from ORM.populate_tables import State, create_ques_and_ques_choices, add_question_paper
+from llama_index.callbacks import TokenCountingHandler, CallbackManager
 
 router = APIRouter()
 
@@ -353,19 +356,38 @@ def generate_next_steps(correct_answer_text, question, tone):
     Do not address the student by saying "Dear student".
     """
 
-    encoding = tiktoken.encoding_for_model("gpt-4")
+    encoding = tiktoken.encoding_for_model("gpt-4-1106-preview")
     print("LLM Prompt Tokens: ",len(encoding.encode(prompt)),"\n")
-
-    
 
     llm = OpenAI(model="gpt-4-1106-preview", temperature = 0)
     message = ChatMessage(role="user", content=prompt)
     response = llm.stream_chat([message])
-    stream_tokens = stream_chat_response_to_tokens(response)
+    stream_tokens = stream_chat_response_to_tokens_local(response)
+
     print("LLM Stream Tokens: ",stream_tokens, "\n")
     print("LLM Stream Tokens count: ", len(stream_tokens), "\n")
 
     return StreamingResponse(stream_tokens)
+
+def stream_chat_response_to_tokens_local(
+    chat_response_gen: ChatResponseGen
+) -> TokenGen:
+    """Convert a stream completion response to a stream of tokens."""
+    total_count  = 0
+    def gen() -> TokenGen:
+        nonlocal total_count
+        for response in chat_response_gen:
+            if response.delta:
+                encoding = tiktoken.encoding_for_model("gpt-4-1106-preview")
+                chunk = response.delta
+                stream_count = len(encoding.encode(chunk))
+                total_count += stream_count
+                print("LLM Stream Tokens count: ", total_count)
+                yield chunk
+            else:
+                yield ""
+
+    return gen()
 
 def generate_answer_feedback(correct_answer_text, student_answer_text, question, user_question_paper):
     grade =  {question.question_paper.grade}
@@ -398,19 +420,14 @@ def generate_answer_feedback(correct_answer_text, student_answer_text, question,
     Ensure that ONLY the LaTeX compatible component is within these markers, not the entire text. \
     Do not address the student by saying "Dear student".
     """
+    encoding = tiktoken.encoding_for_model("gpt-4-1106-preview")
+    print("LLM Prompt Tokens: ",len(encoding.encode(prompt)),"\n")
 
     llm = OpenAI(model="gpt-4-1106-preview", temperature = 0)
     message = ChatMessage(role="user", content=prompt)
 
-    encoding = tiktoken.encoding_for_model("gpt-4")
-    print("LLM Prompt Tokens: ", len(encoding.encode(prompt)), "\n")
-
-    llm = OpenAI(model="gpt-4-1106-preview", temperature = 0)
-    message = ChatMessage(role="user", content=prompt)
     response = llm.stream_chat([message])
-    stream_tokens = stream_chat_response_to_tokens(response)
-
-    print("LLM Stream Tokens: ",stream_tokens, "\n")
+    stream_tokens = stream_chat_response_to_tokens_local(response)
 
     return StreamingResponse(stream_tokens)
 
@@ -438,7 +455,7 @@ def assessment_llm(user_question_paper):
     message = ChatMessage(role="user", content=prompt)
 
     response = llm.stream_chat([message])
-    stream_tokens = stream_chat_response_to_tokens(response)
+    stream_tokens = stream_chat_response_to_tokens_local(response)
     return StreamingResponse(stream_tokens)
 
 def next_steps_llm(user_question_paper):
@@ -464,7 +481,7 @@ def next_steps_llm(user_question_paper):
     message = ChatMessage(role="user", content=prompt)
 
     response = llm.stream_chat([message])
-    stream_tokens = stream_chat_response_to_tokens(response)
+    stream_tokens = stream_chat_response_to_tokens_local(response)
     return StreamingResponse(stream_tokens)
 
 def assessment_tree_summarise(user_question_paper):
