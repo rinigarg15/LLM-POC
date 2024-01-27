@@ -28,6 +28,7 @@ class Topic(PyEnum):
     MATHS = "Maths"
     ECONOMICS = "Economics"
     ACCOUNTING = "Accounting"
+    IITJEE = "IIT-JEE"
 
 class Board(PyEnum):
     IGCSE = "IGCSE"
