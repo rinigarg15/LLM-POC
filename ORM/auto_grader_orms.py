@@ -10,7 +10,7 @@ import os
 pwd = os.getenv("SQL_DB_PWD")
 ssl_args = {'ssl': {'ca': os.getenv("CERT_FILE_PATH")}}
 
-engine = create_engine(f'mysql+pymysql://root:root@localhost:3306/auto_grader_db')
+engine = create_engine(f'mysql+pymysql://llmadmin:{pwd}@llmpocdb.mysql.database.azure.com:3306/auto_grader_db', connect_args=ssl_args)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 Base = declarative_base()

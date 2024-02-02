@@ -30,7 +30,7 @@ connect_args = {'ssl': {'ca': ssl_ca}}
 
 config.set_main_option(
     "sqlalchemy.url",
-    f"mysql+pymysql://root:root@localhost:3306/auto_grader_db"
+    f"mysql+pymysql://llmadmin:{os.getenv('SQL_DB_PWD')}@llmpocdb.mysql.database.azure.com:3306/auto_grader_db"
 )
 
 
@@ -68,7 +68,8 @@ def run_migrations_online() -> None:
     engine = engine_from_config(
         config.get_section(config.config_ini_section),
         prefix='sqlalchemy.',
-        poolclass=pool.NullPool
+        poolclass=pool.NullPool,
+        connect_args=connect_args
     )
 
     with engine.connect() as connection:
