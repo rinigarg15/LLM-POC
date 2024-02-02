@@ -1,7 +1,7 @@
 """change humourous to humorous in tone
 
 Revision ID: 6df2add68469
-Revises: a802ee6fe1ba
+Revises: ba82280f85f0
 Create Date: 2024-01-16 17:12:00.499817
 
 """
@@ -13,7 +13,7 @@ from sqlalchemy.dialects import mysql
 
 # revision identifiers, used by Alembic.
 revision: str = '6df2add68469'
-down_revision: Union[str, None] = 'a802ee6fe1ba'
+down_revision: Union[str, None] = 'ba82280f85f0'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
