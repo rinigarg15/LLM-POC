@@ -202,7 +202,7 @@ def question_papers():
     return question_papers
 
 @router.post("/user_question_papers")
-def create_user_question_paper(question_paper_id: int, understanding_level: UnderstandingLevel, tone: Tone, feedback_length: FeedbackLength):
+def create_user_question_paper(question_paper_id: int, understanding_level: UnderstandingLevel, tone: Tone, feedback_length = FeedbackLength.ELABORATE.value):
     user_id = 1
     db = SessionLocal()
     user_question_paper = UserQuestionPaper(user_id=user_id, question_paper_id = question_paper_id, score = 0, understanding_level = understanding_level, tone = tone, feedback_length = feedback_length)
