@@ -234,6 +234,22 @@ def get_questions_for_paper(question_paper_id: int, page_number: int = 1,  page_
     db.close()
     return question_list
 
+@router.get("/get_questions/{question_paper_id}")
+def get_questions_for_paper(question_paper_id: int):
+    db = SessionLocal()
+    result = []
+    questions = db.query(Question).filter(Question.question_paper_id == question_paper_id).all()
+    for question in questions:
+        question_choices = db.query(QuestionChoice).filter(QuestionChoice.question == question).all()
+        questions_list = [(question.question_text, question.id), [(question_choice.choice_text, question_choice.id, question_choice.label) for question_choice in question_choices]]
+        marking_scheme = db.query(MarkingScheme).filter(MarkingScheme.question_id == question.id).first()
+        if marking_scheme:
+            questions_list.append(marking_scheme.question_choice.label)
+        result.append(questions_list)
+
+    db.close()
+    return result
+
 @router.post("/question_paper")
 def create_question_paper(form_data: Dict = Body(...)):
     question_paper_id = add_question_paper(form_data)
