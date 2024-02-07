@@ -380,18 +380,10 @@ def generate_answer_feedback(correct_answer_text, student_answer_text, question,
     Do not address the student by saying "Dear student".
     """
 
-
+    token_counter = TokenCountingHandler(tokenizer = tiktoken.encoding_for_model("gpt-4-1106-preview").encode)
     llm = OpenAI(model="gpt-4-1106-preview", temperature = 0)
     message = ChatMessage(role="user", content=prompt)
 
-    token_counter = TokenCountingHandler(tokenizer = tiktoken.encoding_for_model("gpt-4").encode)
-
-    llm = OpenAI(model="gpt-4", temperature = 0, callback_manager = CallbackManager([token_counter]))
-
-    token_counter.reset_counts()
-    print(
-    "LLM Prompt Tokens: ",
-    token_counter.prompt_llm_token_count)
     
     response = llm.chat([message])
     print(
