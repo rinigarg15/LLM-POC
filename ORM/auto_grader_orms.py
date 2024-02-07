@@ -28,6 +28,7 @@ class Topic(PyEnum):
     MATHS = "Maths"
     ECONOMICS = "Economics"
     ACCOUNTING = "Accounting"
+    IITJEE = "IITJEE"
 
 class Board(PyEnum):
     IGCSE = "IGCSE"
@@ -39,7 +40,13 @@ class Tone(PyEnum):
     FORMAL = "Formal"
     CASUAL = "Casual"
     GENZ = "Gen-Z"
-    HUMOUROUS = "Humourous"
+    HUMOROUS = "Humorous"
+
+class FeedbackLength(PyEnum):
+    ELABORATE = "Elaborate"
+    CONCISE = "Concise"
+    NO = "No"
+
 
 class User(Base):
     __tablename__ = 'user'
@@ -61,15 +68,15 @@ class QuestionPaper(Base):
     __tablename__ = 'question_paper'
     id = Column(Integer, primary_key=True)
     name = Column(String(50), nullable=False)
-    topic = Column(String(100), nullable=False)
+    topic = Column(SQLAlchemyEnum(Topic, values_callable=lambda enum_class: [e.value for e in enum_class]), nullable=False)
     type = Column(String(100), nullable=False)
     instructions = Column(Text)
     information = Column(Text)
     date = Column(DateTime, nullable=False)
     duration = Column(Integer, nullable=True)
-    board = Column(SQLAlchemyEnum(Board), nullable=False)
+    board = Column(SQLAlchemyEnum(Board, values_callable=lambda enum_class: [e.value for e in enum_class]), nullable=False)
     grade = Column(Integer, nullable=True)
-    state = Column(SQLAlchemyEnum(State), nullable=False)
+    state = Column(SQLAlchemyEnum(State, values_callable=lambda enum_class: [e.value for e in enum_class]), nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, onupdate=datetime.utcnow)
 
@@ -105,8 +112,9 @@ class UserQuestionPaper(Base):
     score = Column(Integer, nullable=False)
     feedback = Column(Text)
     next_steps = Column(Text)
-    tone = Column(SQLAlchemyEnum(Tone), nullable=False)
-    understanding_level = Column(SQLAlchemyEnum(UnderstandingLevel), nullable=False)
+    tone = Column(SQLAlchemyEnum(Tone, values_callable=lambda enum_class: [e.value for e in enum_class]), nullable=False)
+    understanding_level = Column(SQLAlchemyEnum(UnderstandingLevel, values_callable=lambda enum_class: [e.value for e in enum_class]), nullable=False)
+    feedback_length = Column(SQLAlchemyEnum(FeedbackLength, values_callable=lambda enum_class: [e.value for e in enum_class]), nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, onupdate=datetime.utcnow)
 
