@@ -364,20 +364,22 @@ def generate_answer_feedback(correct_answer_text, student_answer_text, question,
     correct_answer and the student_answer to a MCQ question for class {grade} on the given topic. \
     All the 3 fields - correct_answer, student_answer, and question are in LaTeX.
     The student_answer is wrong.
-    Your goal is to generate concise feedback to help the student, \
-    with the important points highlighted in bold. The feedback should be appropriate for students in class {grade}, \
-    taking into account both the topic and their {understanding_level} level understanding on the topic.
+    Your goal is to generate concise feedback to help the student, with the important points highlighted in bold.
+
     Perform the following actions:
-    1) Generate appropriate bulleted feedback with a very {tone} style of communication\
-    by taking into account both the topic and that the feedback is meant for class {grade} students\
-    with a {understanding_level} level understanding on the topic,
-    so that the student doesn't make the same mistake again.
-    Always include a "Avoid this mistake in future" section in your feedback.
-    In your feedback, enclose any LaTeX compatible component in LaTeX, \
-    using '$$' at the start and end of each LaTeX equation for proper rendering in Streamlit. \
+    1) Generate appropriate bulleted feedback in a very {tone} style of communication, \
+    structured in 3 concise points, based on the wrong student_answer and the correct_answer and by taking into account\
+    both the topic and that the feedback is meant for class {grade} students with a {understanding_level} level understanding on the topic.
+
+    2) Include a "Avoid this mistake in future" section with a concise point in a very {tone} style of communication, \
+    based on the wrong student_answer and the correct_answer and by taking into account\
+    both the topic and that the feedback is meant for class {grade} students with a {understanding_level} level understanding on the topic, so that the student doesn't reepat the mistake.
+
+    Always enclose any LaTeX compatible component in '$$' for proper rendering in Streamlit. \
     Ensure that ONLY the LaTeX compatible component is within these markers, not the entire text. \
     Do not address the student by saying "Dear student".
     """
+
 
     llm = OpenAI(model="gpt-4-1106-preview", temperature = 0)
     message = ChatMessage(role="user", content=prompt)
@@ -401,8 +403,8 @@ def assessment_llm(user_question_paper):
     that can help the student with a {understanding_level} level understanding on the topic hone his preparation.
     Articulate a generic feedback taking cues from the student's mistakes and \
     avoid mentioning individual question feedback.
-    In your feedback, enclose any LaTeX compatible component in LaTeX, \
-    using '$$' at the start and end of each LaTeX equation for proper rendering in Streamlit. \
+
+    Always enclose any LaTeX compatible component in '$$' for proper rendering in Streamlit. \
     Ensure that ONLY the LaTeX compatible component is within these markers, not the entire text. \
     """
 
@@ -414,10 +416,11 @@ def assessment_llm(user_question_paper):
     return StreamingResponse(stream_tokens)
 
 def generate_next_steps(correct_answer_text, question, user_question_paper):
-    grade = {question.question_paper.grade}
+    grade = question.question_paper.grade
     understanding_level = user_question_paper.understanding_level
-    topic =  {question.question_paper.topic}
-    tone = {user_question_paper.tone}
+    topic = question.question_paper.topic
+    tone = user_question_paper.tone
+
     prompt = f"""
     question: {question.question_text}
     correct_answer: {correct_answer_text}
@@ -427,16 +430,14 @@ def generate_next_steps(correct_answer_text, question, user_question_paper):
     correct_answer to a MCQ question for class {grade} on the given {topic}. \
     The fields correct_answer and question are in LaTeX.
     The student has answered the question correctly.
-    Your goal is to generate concise next steps to help a student \
-    who has a {understanding_level} level understanding of this {topic}, deepen it with
-    the important points highlighted in bold. The next steps should be appropriate for students in class {grade}, \
-    taking into account the {topic}.
+    Your goal is to generate concise next steps to help the student, with the important points highlighted in bold.
     Perform the following actions:
-    1) Generate appropriate bulleted next steps with a very {tone} style of communication\
-    by taking into account both the {topic} and the fact that the next steps are meant for class {grade} students\
-    with a {understanding_level} level understanding of this {topic}, with an aim to deepen their understanding on it.
-    In your next steps, enclose any LaTeX compatible component in LaTeX, \
-    using '$$' at the start and end of each LaTeX equation for proper rendering in Streamlit. \
+    1) Generate appropriate bulleted next steps for a student of class {grade}, \
+    with an aim to deepen their understanding on the {topic},\
+    in a very {tone} style of communication, structured in 2 concise points,
+    by taking into account the fact that the student has a {understanding_level} level understanding of this {topic}.
+
+    Always enclose any LaTeX compatible component in '$$' for proper rendering in Streamlit. \
     Ensure that ONLY the LaTeX compatible component is within these markers, not the entire text. \
     Do not address the student by saying "Dear student".
     """
@@ -461,10 +462,10 @@ def next_steps_llm(user_question_paper):
     You are a tutor with a very {tone} style of communication who has been given the lines\
     of next_steps a student received in taking a MCQ test on the {topic}, to deepen his understanding on the {topic}.
     Your job is to create a relevant and concise bulleted summary from the individual next_steps\
-    that can help the student with a {understanding_level} level understanding on the {topic} to hone his preparation.
+    that can help the student with a {understanding_level} level understanding on the {topic} hone his preparation.
     Articulate a generic summary and avoid mentioning individual question summary.
-    In your summary, enclose any LaTeX compatible component in LaTeX, \
-    using '$$' at the start and end of each LaTeX equation for proper rendering in Streamlit. \
+
+    Always enclose any LaTeX compatible component in '$$' for proper rendering in Streamlit. \
     Ensure that ONLY the LaTeX compatible component is within these markers, not the entire text. \
     """
 
@@ -493,8 +494,8 @@ def assessment_tree_summarise(user_question_paper):
     that can help the student with a {understanding_level} level understanding on the {topic} hone his preparation.
     Articulate a generic feedback taking cues from the student's mistakes and \
     avoid mentioning individual question feedback.
-    In your feedback, enclose any LaTeX compatible component in LaTeX, \
-    using '$$' at the start and end of each LaTeX equation for proper rendering in Streamlit. \
+
+    Always enclose any LaTeX compatible component in '$$' for proper rendering in Streamlit. \
     Ensure that ONLY the LaTeX compatible component is within these markers, not the entire text. \
     """
 
