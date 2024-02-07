@@ -2,6 +2,7 @@ import io
 import json
 import os
 from llama_index.llms import OpenAI
+from sqlalchemy import asc
 from sqlalchemy.orm import Session
 from fastapi import APIRouter, Depends, HTTPException, Response, UploadFile
 from fastapi.security import OAuth2PasswordRequestForm
@@ -17,8 +18,10 @@ from typing import Dict
 from ORM.populate_tables import State, create_ques_and_ques_choices, add_question_paper
 import tiktoken
 from llama_index.callbacks import CallbackManager, TokenCountingHandler
+from cachetools import cached, TTLCache
 
 router = APIRouter()
+cache = TTLCache(maxsize=100, ttl=1 * 24 * 60 * 60)
 
 # SECRET_KEY = os.getenv("SECRET_KEY")
 # ALGORITHM = "HS256"
@@ -214,20 +217,22 @@ def create_user_question_paper(question_paper_id: int, understanding_level: Unde
     return {"user_question_paper_id": user_question_paper_id, "num_questions": num_questions}
 
 @router.get("/questions/{question_paper_id}")
-def get_questions_for_paper(question_paper_id: int):
+@cached(cache)
+def get_questions_for_paper(question_paper_id: int, page_number: int = 1,  page_size: int = 1):
+    offset_val = (page_number - 1) * page_size
+
     db = SessionLocal()
-    result = []
-    questions = db.query(Question).filter(Question.question_paper_id == question_paper_id).all()
-    for question in questions:
+    question_list = []
+    question = db.query(Question).filter(Question.question_paper_id == question_paper_id).order_by(asc(Question.id)).limit(page_size).offset(offset_val).first()
+    if question:
         question_choices = db.query(QuestionChoice).filter(QuestionChoice.question == question).all()
+        question_list = [(question.question_text, question.id), [(question_choice.choice_text, question_choice.id, question_choice.label) for question_choice in question_choices]]
         marking_scheme = db.query(MarkingScheme).filter(MarkingScheme.question_id == question.id).first()
-        questions_list = [(question.question_text, question.id), [(question_choice.choice_text, question_choice.id, question_choice.label) for question_choice in question_choices]]
         if marking_scheme:
-            questions_list.append(marking_scheme.question_choice.label)
-        result.append(questions_list)
+            question_list.append(marking_scheme.question_choice.label)
 
     db.close()
-    return result
+    return question_list
 
 @router.post("/question_paper")
 def create_question_paper(form_data: Dict = Body(...)):
