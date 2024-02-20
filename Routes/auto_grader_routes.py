@@ -335,20 +335,50 @@ def generate_latex(text):
     --------------------------------------------------------
     Please identify any LaTeX compatible components in the following text and convert them into their corresponding LaTeX code, enclosed in '$$'. Ensure that the original wording and structure of the text remain unchanged. Begin your response directly with the converted text, omitting any introductory phrases or explanations. The response should consist solely of the original text with the LaTeX compatible components replaced by their LaTeX code.
     """
+    token_counter = TokenCountingHandler(
+    tokenizer=tiktoken.encoding_for_model("gpt-4-1106-preview").encode,
+    verbose=False,  # set to true to see usage printed to the console
+    )
 
-    llm = OpenAI(model="gpt-4", temperature = 0)
+    callback_manager = CallbackManager([token_counter])
 
-    response = llm.complete(prompt)
+    encoding = tiktoken.encoding_for_model("gpt-4-1106-preview")
+    print("LLM Prompt Tokens: ", len(encoding.encode(prompt)), "\n")
+
+    llm = OpenAI(model="gpt-4-1106-preview", temperature = 0, callback_manager=callback_manager)
+    token_counter.reset_counts()
+
+    message = ChatMessage(role="user", content=prompt)
+    response = llm.chat([message])
+    print(response.json(), "\n")
+    print(
+    "LLM  response: ",
+    response.json()['message']['content'],
+    "\n"
+    )
+
+
+    print("LLM Completion Tokens: ", len(encoding.encode(response)), "\n")
+    print(
+    "LLM  Token Counter Prompt Tokens: ",
+    token_counter.prompt_llm_token_count,
+    "\n",
+    "LLM Token Counter Completion Tokens: ",
+    token_counter.completion_llm_token_count,
+    "\n",
+    "Total Token Counter LLM Token Count: ",
+    token_counter.total_llm_token_count,
+    )
+                    
     return response
 
 @router.get("/show_next_steps")
 def show_next_steps(user_question_paper_id: int):
     db = SessionLocal()
     user_question_paper = db.query(UserQuestionPaper).filter(UserQuestionPaper.id == user_question_paper_id).first()
-
-    if user_question_paper.next_steps:
-        return True
-    return False
+    show_next_steps = user_question_paper.next_steps
+    db.close()
+    return show_next_steps
 
 def stream_chat_response_to_tokens_local(
     chat_response_gen: ChatResponseGen
@@ -357,21 +387,23 @@ def stream_chat_response_to_tokens_local(
     total_count  = 0
     def gen() -> TokenGen:
         nonlocal total_count
-        for response in chat_response_gen:
-            if response.delta:
-                encoding = tiktoken.encoding_for_model("gpt-4-1106-preview")
-                chunk = response.delta
-                stream_count = len(encoding.encode(chunk))
-                total_count += stream_count
-                print("LLM Stream Tokens count: ", total_count)
-                yield chunk
-            else:
-                yield ""
+        try:
+            for response in chat_response_gen:
+                if response.delta:
+                    encoding = tiktoken.encoding_for_model("gpt-4-1106-preview")
+                    chunk = response.delta
+                    stream_count = len(encoding.encode(chunk))
+                    total_count += stream_count
+                    yield chunk
+                else:
+                    yield ""
+        finally:
+            print("Final LLM Stream Tokens count: ", total_count)
 
     return gen()
 
 def generate_answer_feedback(correct_answer_text, student_answer_text, question, user_question_paper):
-    grade =  {question.question_paper.grade}
+    grade =  question.question_paper.grade
     understanding_level = user_question_paper.understanding_level
     tone = user_question_paper.tone
 
@@ -395,14 +427,14 @@ def generate_answer_feedback(correct_answer_text, student_answer_text, question,
 
     2) Include a "Avoid this mistake in future" section with a concise point in a very {tone} style of communication, \
     based on the wrong student_answer and the correct_answer and by taking into account\
-    both the topic and that the feedback is meant for class {grade} students with a {understanding_level} level understanding on the topic, so that the student doesn't reepat the mistake.
+    both the topic and that the feedback is meant for class {grade} students with a {understanding_level} level understanding on the topic, so that the student doesn't repeat the mistake.
 
     Always enclose any LaTeX compatible component in '$$' for proper rendering in Streamlit. \
     Ensure that ONLY the LaTeX compatible component is within these markers, not the entire text. \
     Do not address the student by saying "Dear student".
     """
     encoding = tiktoken.encoding_for_model("gpt-4-1106-preview")
-    print("LLM Prompt Tokens: ",len(encoding.encode(prompt)),"\n")
+    print("LLM Prompt Tokens: ", len(encoding.encode(prompt)),"\n")
 
 
     llm = OpenAI(model="gpt-4-1106-preview", temperature = 0)
@@ -468,12 +500,19 @@ def generate_next_steps(correct_answer_text, question, user_question_paper):
     """
 
 
+    encoding = tiktoken.encoding_for_model("gpt-4-1106-preview")
+    print("LLM Prompt Tokens: ",len(encoding.encode(prompt)),"\n")
+
     llm = OpenAI(model="gpt-4-1106-preview", temperature = 0)
     message = ChatMessage(role="user", content=prompt)
-
     response = llm.stream_chat([message])
-    stream_tokens = stream_chat_response_to_tokens(response)
+    stream_tokens = stream_chat_response_to_tokens_local(response)
+
+    print("LLM Stream Tokens: ",stream_tokens, "\n")
+    print("LLM Stream Tokens count: ", len(stream_tokens), "\n")
+
     return StreamingResponse(stream_tokens)
+
 
 def next_steps_llm(user_question_paper):
     understanding_level = user_question_paper.understanding_level
