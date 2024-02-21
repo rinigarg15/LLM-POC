@@ -21,16 +21,9 @@ from ORM.auto_grader_orms import Base
 target_metadata = Base.metadata
 #target_metadata = None
 
-# other values from the config, defined by the needs of env.py,
-# can be acquired:
-# my_important_option = config.get_main_option("my_important_option")
-# ... etc.
-ssl_ca = os.getenv('CERT_FILE_PATH')  
-connect_args = {'ssl': {'ca': ssl_ca}}
-
 config.set_main_option(
     "sqlalchemy.url",
-    f"mysql+pymysql://llmadmin:{os.getenv('SQL_DB_PWD')}@llmpocdb.mysql.database.azure.com:3306/auto_grader_db"
+    f"mysql+pymysql://llmadmin:{os.getenv('SQL_DB_PWD')}@{os.getenv('DB_IP')}:3306/auto_grader_db"
 )
 
 
@@ -68,8 +61,7 @@ def run_migrations_online() -> None:
     engine = engine_from_config(
         config.get_section(config.config_ini_section),
         prefix='sqlalchemy.',
-        poolclass=pool.NullPool,
-        connect_args=connect_args
+        poolclass=pool.NullPool
     )
 
     with engine.connect() as connection:

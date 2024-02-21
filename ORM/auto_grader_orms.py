@@ -8,9 +8,9 @@ import bcrypt
 import os
 
 pwd = os.getenv("SQL_DB_PWD")
-ssl_args = {'ssl': {'ca': os.getenv("CERT_FILE_PATH")}}
+db_ip = os.getenv('DB_IP')
 
-engine = create_engine(f'mysql+pymysql://llmadmin:{pwd}@llmpocdb.mysql.database.azure.com:3306/auto_grader_db', connect_args=ssl_args)
+engine = create_engine(f'mysql+pymysql://llmadmin:{pwd}@{db_ip}:3306/auto_grader_db')
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 Base = declarative_base()
