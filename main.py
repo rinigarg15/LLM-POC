@@ -26,12 +26,26 @@ import math
 from persistence import from_persist_path, persist_node_texts, DEFAULT_NODE_TEXT_LIST_KEY
 from llama_index.llms.llm import stream_completion_response_to_tokens
 from googleapiclient.discovery import build
-from Routes import topic_routes, auto_grader_routes
+from Routes import topic_routes, auto_grader_routes, auto_grader_auth_routes
 import isodate
+from fastapi.middleware.cors import CORSMiddleware
+origins = [
+    "http://localhost",
+    "http://localhost:8080",
+    "http://localhost:8501",
+]
 
 app = FastAPI()
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 app.include_router(topic_routes.router)
 app.include_router(auto_grader_routes.router)
+app.include_router(auto_grader_auth_routes.router)
 BaseConfig.arbitrary_types_allowed = True
 chat_engines_dict = {}
 

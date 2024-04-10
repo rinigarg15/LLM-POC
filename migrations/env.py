@@ -23,7 +23,7 @@ target_metadata = Base.metadata
 
 config.set_main_option(
     "sqlalchemy.url",
-    f"mysql+pymysql://llmadmin:{os.getenv('SQL_DB_PWD')}@{os.getenv('DB_IP')}:3306/auto_grader_db"
+    f"mysql+pymysql://{os.getenv('DB_USERNAME')}:{os.getenv('SQL_DB_PWD')}@{os.getenv('DB_IP')}:3306/auto_grader_db"
 )
 
 

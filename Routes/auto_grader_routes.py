@@ -1,14 +1,13 @@
 import io
 import json
 import os
+from grpc import Status
 from llama_index.llms import OpenAI
 from sqlalchemy import asc
 from sqlalchemy.orm import Session
 from fastapi import APIRouter, Depends, HTTPException, Response, UploadFile
-from fastapi.security import OAuth2PasswordRequestForm
-from fastapi_login import LoginManager
 from ORM.auto_grader_orms import FeedbackLength,UnderstandingLevel, MarkingScheme, Question, QuestionChoice, QuestionPaper, SessionLocal, Tone, User, UserQuestionAnswer, UserQuestionPaper
-from llama_index.llms.llm import stream_completion_response_to_tokens, stream_chat_response_to_tokens
+from llama_index.llms.llm import stream_chat_response_to_tokens
 from llama_index.llms import ChatMessage
 from fastapi.responses import StreamingResponse
 from llama_index import ServiceContext
@@ -16,50 +15,18 @@ from llama_index.response_synthesizers.tree_summarize import TreeSummarize
 from fastapi import Body
 from typing import Dict
 from ORM.populate_tables import State, create_ques_and_ques_choices, add_question_paper
-import tiktoken
-from llama_index.callbacks import CallbackManager, TokenCountingHandler
 from cachetools import cached, TTLCache
+from Routes.auto_grader_auth_routes import current_user
+from Routes.llm_methods import assessment_llm, generate_answer_feedback, generate_next_steps, next_steps_llm
 
 router = APIRouter()
 cache = TTLCache(maxsize=100, ttl=1 * 24 * 60 * 60)
 
-# SECRET_KEY = os.getenv("SECRET_KEY")
-# ALGORITHM = "HS256"
-# ACCESS_TOKEN_EXPIRE_MINUTES = 20
-# #TEMP_DIR = "temp"
+SECRET_KEY = os.getenv("SECRET_KEY")
+ALGORITHM = "HS256"
+ACCESS_TOKEN_EXPIRE_MINUTES = 120
 
-# manager = LoginManager(SECRET_KEY, token_url='/login', use_cookie=False)
-
-# if not os.path.exists(TEMP_DIR):
-#     os.makedirs(TEMP_DIR)
-# @router.post('/login')
-# def login(form_data: OAuth2PasswordRequestForm = Depends()):
-#     user = load_user(form_data)
-#     if not user:
-#         raise HTTPException(status_code=400, detail="Incorrect username or password")
-
-#     if not user.check_password(form_data.password):
-#         raise HTTPException(status_code=400, detail="Incorrect username or password")
-    
-#     access_token = manager.create_access_token(data={'sub': form_data.username})
-#     return {'access_token': access_token, 'token_type': 'bearer'}
-
-# @router.post("/signup")
-# def signup(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
-#     existing_user = load_user(form_data, db)
-#     if existing_user:
-#         raise HTTPException(status_code=400, detail="Username already registered")
-
-#     new_user = User(user_name=form_data.username)
-#     new_user.set_password(form_data.password)
-#     db.add(new_user)
-#     db.commit()
-#     return {"message": "User created successfully"}
-
-# @manager.user_loader
-# def load_user(form_data, db: Session = Depends(get_db)):
-#     user = db.query(User).filter(User.user_name == form_data.username).first()
-#     return user
+# TEMP_DIR = "temp"
 # def upload_file(file: UploadFile):
 #     file_location = os.path.join(TEMP_DIR, file.filename)
 #     with open(file_location, "wb+") as file_object:
@@ -72,12 +39,17 @@ cache = TTLCache(maxsize=100, ttl=1 * 24 * 60 * 60)
 #         yield db
 #     finally:
 #         db.close()
+# if not os.path.exists(TEMP_DIR):
+#     os.makedirs(TEMP_DIR)
+
+
     
 @router.get("/score")
 def get_score(user_question_paper_id: int):
     db = SessionLocal()
-    user_question_paper = db.query(UserQuestionPaper).filter(UserQuestionPaper.id == user_question_paper_id).first()
-    return user_question_paper.score
+    user_question_paper_score= db.query(UserQuestionPaper).filter(UserQuestionPaper.id == user_question_paper_id).first().score
+    db.close()
+    return user_question_paper_score
 
 @router.post("/check_answer")
 def check_answer(question_id: int, student_answer_choice_id: int, user_question_paper_id: int):
@@ -114,7 +86,7 @@ def get_answer_feedback(question_id: int, student_answer_choice_id: int, user_qu
     student_answer_choice = db.query(QuestionChoice).filter(QuestionChoice.id == student_answer_choice_id).first().choice_text
     user_question_paper = db.query(UserQuestionPaper).filter(UserQuestionPaper.id == user_question_paper_id).first()
 
-    return generate_answer_feedback(correct_answer_choice, student_answer_choice, question, user_question_paper)
+    return generate_answer_feedback(correct_answer_choice, student_answer_choice, question, user_question_paper, db)
     
 @router.post("/answer_feedback")
 def post_answer_feedback(question_id: int, user_question_paper_id: int, feedback):
@@ -141,10 +113,10 @@ def get_test_feedback(user_question_paper_id: int):
     if user_question_paper.score == num_questions:
         def iter_string():
             yield "Great job! You got all your answers correct! Keep it up!".encode('utf-8')
-
+        db.close()
         return StreamingResponse(io.BytesIO(b"".join(iter_string())))
     else:
-        return assessment_llm(user_question_paper)
+        return assessment_llm(user_question_paper, db)
 
 @router.post("/test_feedback")
 def post_test_feedback(user_question_paper_id: int, feedback):
@@ -163,7 +135,7 @@ def get_next_steps(question_id: int, user_question_paper_id: int):
     correct_choice_text = db.query(QuestionChoice).filter(QuestionChoice.id == marking_scheme.correct_question_choice_id).first().choice_text
     user_question_paper = db.query(UserQuestionPaper).filter(UserQuestionPaper.id == user_question_paper_id).first()
 
-    return generate_next_steps(correct_choice_text, question, user_question_paper)
+    return generate_next_steps(correct_choice_text, question, user_question_paper, db)
     
 @router.post("/next_steps")
 def post_next_steps(question_id: int, user_question_paper_id: int, next_steps):
@@ -186,7 +158,7 @@ def post_next_steps(question_id: int, user_question_paper_id: int, next_steps):
 def get_test_next_steps(user_question_paper_id: int):
     db = SessionLocal()
     user_question_paper = db.query(UserQuestionPaper).filter(UserQuestionPaper.id == user_question_paper_id).first()
-    return next_steps_llm(user_question_paper)
+    return next_steps_llm(user_question_paper, db)
 
 @router.post("/test_next_steps")
 def post_test_next_steps(user_question_paper_id: int, next_steps):
@@ -198,15 +170,15 @@ def post_test_next_steps(user_question_paper_id: int, next_steps):
     db.close()
 
 @router.get("/question_papers")
-def question_papers():
+def question_papers(_user=Depends(current_user)):
     db = SessionLocal()
     question_papers = db.query(QuestionPaper).filter(QuestionPaper.state == State.COMPLETED.value).all()
     db.close()
     return question_papers
 
 @router.post("/user_question_papers")
-def create_user_question_paper(question_paper_id: int, understanding_level: UnderstandingLevel, tone: Tone, feedback_length = FeedbackLength.ELABORATE.value):
-    user_id = 1
+def create_user_question_paper(question_paper_id: int, understanding_level: UnderstandingLevel, tone: Tone, feedback_length = FeedbackLength.ELABORATE.value, user=Depends(current_user)):
+    user_id = user.id
     db = SessionLocal()
     user_question_paper = UserQuestionPaper(user_id=user_id, question_paper_id = question_paper_id, score = 0, understanding_level = understanding_level, tone = tone, feedback_length = feedback_length)
     db.add(user_question_paper)
@@ -260,8 +232,8 @@ def create_question(form_data: Dict = Body(...)):
     create_ques_and_ques_choices(form_data)
 
 @router.get("/tests")
-def list_tests():
-    user_id = 1
+def list_tests(user=Depends(current_user)):
+    user_id = user.id
 
     db = SessionLocal()
     user_question_papers = db.query(UserQuestionPaper).filter(UserQuestionPaper.user_id == user_id).all()
@@ -342,171 +314,9 @@ def generate_latex(text):
 @router.get("/show_next_steps")
 def show_next_steps(user_question_paper_id: int):
     db = SessionLocal()
-    user_question_paper = db.query(UserQuestionPaper).filter(UserQuestionPaper.id == user_question_paper_id).first()
+    user_question_paper_next_steps = db.query(UserQuestionPaper).filter(UserQuestionPaper.id == user_question_paper_id).first().next_steps
+    db.close()
 
-    if user_question_paper.next_steps:
+    if user_question_paper_next_steps:
         return True
     return False
-
-def generate_answer_feedback(correct_answer_text, student_answer_text, question, user_question_paper):
-    grade =  {question.question_paper.grade}
-    understanding_level = user_question_paper.understanding_level
-    tone = user_question_paper.tone
-
-    prompt = f"""
-    question: {question.question_text}
-    correct_answer: {correct_answer_text}
-    student_answer: {student_answer_text}
-    topic: {question.question_paper.topic}
-
-    --------------------------------------------------------
-    You are a tutor with a very {tone} style of communication who has been provided the \
-    correct_answer and the student_answer to a MCQ question for class {grade} on the given topic. \
-    All the 3 fields - correct_answer, student_answer, and question are in LaTeX.
-    The student_answer is wrong.
-    Your goal is to generate concise feedback to help the student, with the important points highlighted in bold.
-
-    Perform the following actions:
-    1) Generate appropriate bulleted feedback in a very {tone} style of communication, \
-    structured in 3 concise points, based on the wrong student_answer and the correct_answer and by taking into account\
-    both the topic and that the feedback is meant for class {grade} students with a {understanding_level} level understanding on the topic.
-
-    2) Include a "Avoid this mistake in future" section with a concise point in a very {tone} style of communication, \
-    based on the wrong student_answer and the correct_answer and by taking into account\
-    both the topic and that the feedback is meant for class {grade} students with a {understanding_level} level understanding on the topic, so that the student doesn't reepat the mistake.
-
-    Always enclose any LaTeX compatible component in '$$' for proper rendering in Streamlit. \
-    Ensure that ONLY the LaTeX compatible component is within these markers, not the entire text. \
-    Do not address the student by saying "Dear student".
-    """
-
-
-    llm = OpenAI(model="gpt-4-1106-preview", temperature = 0)
-    message = ChatMessage(role="user", content=prompt)
-
-    response = llm.stream_chat([message])
-    stream_tokens = stream_chat_response_to_tokens(response)
-    return StreamingResponse(stream_tokens)
-
-def assessment_llm(user_question_paper):
-    understanding_level = user_question_paper.understanding_level
-    tone = user_question_paper.tone
-
-    prompt = f"""
-    feedback: {user_question_paper.feedback}
-    topic: {user_question_paper.question_paper.topic}
-    
-    --------------------------------------------------------
-    You are a tutor with a very {tone} style of communication who has been given the lines\
-    of feedback a student received in taking a MCQ test on the topic.
-    Your job is to create a relevant and concise bulleted summary from the individual feedback\
-    that can help the student with a {understanding_level} level understanding on the topic hone his preparation.
-    Articulate a generic feedback taking cues from the student's mistakes and \
-    avoid mentioning individual question feedback.
-
-    Always enclose any LaTeX compatible component in '$$' for proper rendering in Streamlit. \
-    Ensure that ONLY the LaTeX compatible component is within these markers, not the entire text. \
-    """
-
-    llm = OpenAI(model="gpt-4-1106-preview", temperature = 0)
-    message = ChatMessage(role="user", content=prompt)
-
-    response = llm.stream_chat([message])
-    stream_tokens = stream_chat_response_to_tokens(response)
-    return StreamingResponse(stream_tokens)
-
-def generate_next_steps(correct_answer_text, question, user_question_paper):
-    grade = question.question_paper.grade
-    understanding_level = user_question_paper.understanding_level
-    topic = question.question_paper.topic
-    tone = user_question_paper.tone
-
-    prompt = f"""
-    question: {question.question_text}
-    correct_answer: {correct_answer_text}
-
-    --------------------------------------------------------
-    You are a tutor with a very {tone} style of communication who has been provided the \
-    correct_answer to a MCQ question for class {grade} on the given {topic}. \
-    The fields correct_answer and question are in LaTeX.
-    The student has answered the question correctly.
-    Your goal is to generate concise next steps to help the student, with the important points highlighted in bold.
-    Perform the following actions:
-    1) Generate appropriate bulleted next steps for a student of class {grade}, \
-    with an aim to deepen their understanding on the {topic},\
-    in a very {tone} style of communication, structured in 2 concise points,
-    by taking into account the fact that the student has a {understanding_level} level understanding of this {topic}.
-
-    Always enclose any LaTeX compatible component in '$$' for proper rendering in Streamlit. \
-    Ensure that ONLY the LaTeX compatible component is within these markers, not the entire text. \
-    Do not address the student by saying "Dear student".
-    """
-
-
-    llm = OpenAI(model="gpt-4-1106-preview", temperature = 0)
-    message = ChatMessage(role="user", content=prompt)
-
-    response = llm.stream_chat([message])
-    stream_tokens = stream_chat_response_to_tokens(response)
-    return StreamingResponse(stream_tokens)
-
-def next_steps_llm(user_question_paper):
-    understanding_level = user_question_paper.understanding_level
-    tone = user_question_paper.tone
-    topic = {user_question_paper.question_paper.topic}
-
-    prompt = f"""
-    next_steps: {user_question_paper.next_steps}
-    
-    --------------------------------------------------------
-    You are a tutor with a very {tone} style of communication who has been given the lines\
-    of next_steps a student received in taking a MCQ test on the {topic}, to deepen his understanding on the {topic}.
-    Your job is to create a relevant and concise bulleted summary from the individual next_steps\
-    that can help the student with a {understanding_level} level understanding on the {topic} hone his preparation.
-    Articulate a generic summary and avoid mentioning individual question summary.
-
-    Always enclose any LaTeX compatible component in '$$' for proper rendering in Streamlit. \
-    Ensure that ONLY the LaTeX compatible component is within these markers, not the entire text. \
-    """
-
-    llm = OpenAI(model="gpt-4-1106-preview", temperature = 0)
-    message = ChatMessage(role="user", content=prompt)
-
-    response = llm.stream_chat([message])
-    stream_tokens = stream_chat_response_to_tokens(response)
-    return StreamingResponse(stream_tokens)
-
-def assessment_tree_summarise(user_question_paper):
-    db = SessionLocal()
-    user_question_answers= db.query(UserQuestionAnswer).filter(UserQuestionAnswer.user_question_paper_id == user_question_paper.id).all()
-    topic = user_question_paper.question_paper.topic
-    understanding_level = user_question_paper.understanding_level
-    tone = user_question_paper.tone
-
-    llm = OpenAI(model="gpt-4")
-    service_context = ServiceContext.from_defaults(llm=llm)
-    response_synthesizer = TreeSummarize(streaming = True, service_context=service_context)
-
-    query_text = f"""
-    You are a tutor with a very {tone} style of communication who has been given the lines\
-    of feedback a student received in taking a MCQ test on the {topic}.
-    Your job is to create a relevant and concise bulleted summary from the individual feedback\
-    that can help the student with a {understanding_level} level understanding on the {topic} hone his preparation.
-    Articulate a generic feedback taking cues from the student's mistakes and \
-    avoid mentioning individual question feedback.
-
-    Always enclose any LaTeX compatible component in '$$' for proper rendering in Streamlit. \
-    Ensure that ONLY the LaTeX compatible component is within these markers, not the entire text. \
-    """
-
-    texts = []
-    for answer in user_question_answers:
-        if not answer.feedback:
-            continue
-        texts.append(answer.feedback)
-
-    response = response_synthesizer.get_response(
-        query_text,
-        texts
-    )
-    return StreamingResponse(response)

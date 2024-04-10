@@ -2,15 +2,16 @@ from sqlalchemy.types import Enum as SQLAlchemyEnum
 from enum import Enum as PyEnum
 from sqlalchemy import Boolean, Text, create_engine, Column, Integer, String, ForeignKey, DateTime
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import relationship, sessionmaker
+from sqlalchemy.orm import relationship, sessionmaker, backref
 from datetime import datetime
 import bcrypt
 import os
 
-pwd = os.getenv("SQL_DB_PWD")
+pwd = os.getenv('SQL_DB_PWD')
 db_ip = os.getenv('DB_IP')
+u_name = os.getenv('DB_USERNAME')
 
-engine = create_engine(f'mysql+pymysql://llmadmin:{pwd}@{db_ip}:3306/auto_grader_db')
+engine = create_engine(f'mysql+pymysql://{u_name}:{pwd}@{db_ip}:3306/auto_grader_db')
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 Base = declarative_base()
@@ -46,6 +47,20 @@ class FeedbackLength(PyEnum):
     ELABORATE = "Elaborate"
     CONCISE = "Concise"
     NO = "No"
+
+class QuestionType(PyEnum):
+    TEXT = "Text"
+    SINGLE_CHOICE = "Single Choice"
+
+class Gender(PyEnum):
+    MALE = "Male"
+    FEMALE = "Female"
+    OTHERS = "Others"
+
+class Language(PyEnum):
+    ENGLISH = "English"
+    HINDI = "Hindi"
+    KANNADA = "Kannada"
 
 
 class User(Base):
@@ -90,7 +105,7 @@ class Question(Base):
     updated_at = Column(DateTime, onupdate=datetime.utcnow)
 
     # Relationship
-    question_paper = relationship("QuestionPaper")
+    question_paper = relationship("QuestionPaper", backref=backref("questions", cascade="all, delete-orphan"))
 
 class QuestionChoice(Base):
     __tablename__ = 'question_choice'
@@ -102,7 +117,7 @@ class QuestionChoice(Base):
     updated_at = Column(DateTime, onupdate=datetime.utcnow)
 
     # Relationship
-    question = relationship("Question")
+    question = relationship("Question", backref=backref("question_choices", cascade="all, delete-orphan"))
 
 class UserQuestionPaper(Base):
     __tablename__ = 'user_question_paper'
@@ -119,8 +134,8 @@ class UserQuestionPaper(Base):
     updated_at = Column(DateTime, onupdate=datetime.utcnow)
 
     # Relationships
-    user = relationship("User")
-    question_paper = relationship("QuestionPaper")
+    user = relationship("User", backref=backref("user_question_papers", cascade="all, delete-orphan"))
+    question_paper = relationship("QuestionPaper", backref=backref("user_question_papers", cascade="all, delete-orphan"))
 
 class UserQuestionAnswer(Base):
     __tablename__ = 'user_question_answer'
@@ -134,9 +149,9 @@ class UserQuestionAnswer(Base):
     updated_at = Column(DateTime, onupdate=datetime.utcnow)
 
     # Relationships
-    question = relationship("Question")
-    user_question_paper = relationship("UserQuestionPaper")
-    question_choice = relationship("QuestionChoice")
+    question = relationship("Question", backref=backref("user_question_answers", cascade="all, delete-orphan"))
+    user_question_paper = relationship("UserQuestionPaper", backref=backref("user_question_answers", cascade="all, delete-orphan"))
+    question_choice = relationship("QuestionChoice", backref=backref("user_question_answers", cascade="all, delete-orphan"))
 
 class MarkingScheme(Base):
     __tablename__ = 'marking_scheme'
@@ -150,3 +165,76 @@ class MarkingScheme(Base):
     # Relationships
     question = relationship("Question")
     question_choice = relationship("QuestionChoice")
+
+class ProfileQuestion(Base):
+    __tablename__ = 'profile_question'
+    id = Column(Integer, primary_key=True)
+    text = Column(Text, nullable=False)
+    question_type = Column(SQLAlchemyEnum(QuestionType, values_callable=lambda enum_class: [e.value for e in enum_class]), nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, onupdate=datetime.utcnow)
+
+class ProfileQuestionChoice(Base):
+    __tablename__ = 'profile_question_choice'
+    id = Column(Integer, primary_key=True)
+    profile_question_id = Column(Integer, ForeignKey('profile_question.id'), nullable=False)
+    text = Column(Text, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, onupdate=datetime.utcnow)
+
+    # Relationship
+    profile_question = relationship("ProfileQuestion", backref=backref("profile_question_choices", cascade="all, delete-orphan"))
+
+class ProfileAnswer(Base):
+    __tablename__ = 'profile_answer'
+    id = Column(Integer, primary_key=True)
+    profile_question_id = Column(Integer, ForeignKey('profile_question.id'), nullable=False)
+    user_id = Column(Integer, ForeignKey('user.id'), nullable=False)
+    profile_question_choice_id = Column(Integer, ForeignKey('profile_question_choice.id'))
+    text = Column(Text)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, onupdate=datetime.utcnow)
+
+    # Relationships
+    profile_question = relationship("ProfileQuestion", backref=backref("profile_answers", cascade="all, delete-orphan"))
+    profile_question_choice = relationship("ProfileQuestionChoice", backref=backref("profile_answers", cascade="all, delete-orphan"))
+    user = relationship("User", backref=backref("profile_answers", cascade="all, delete-orphan"))
+
+class Role(Base):
+    __tablename__ = 'role'
+    id = Column(Integer, primary_key=True)
+    name = Column(String(50), unique=True, index=True, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, onupdate=datetime.utcnow)
+
+class Permission(Base):
+    __tablename__ = 'permission'
+    id = Column(Integer, primary_key=True)
+    name = Column(String(50), unique=True, index=True, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, onupdate=datetime.utcnow)
+
+class RolePermission(Base):
+    __tablename__ = 'role_permission'
+    id = Column(Integer, primary_key=True)
+    role_id = Column(Integer, ForeignKey('role.id'), nullable=False)
+    permission_id = Column(Integer, ForeignKey('permission.id'), nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, onupdate=datetime.utcnow)
+
+    # Relationships
+    role = relationship("Role", backref=backref("role_permissions", cascade="all, delete-orphan"))
+    permission = relationship("Permission", backref=backref("role_permissions", cascade="all, delete-orphan"))
+
+class UserRole(Base):
+    __tablename__ = 'user_role'
+    id = Column(Integer, primary_key=True)
+    role_id = Column(Integer, ForeignKey('role.id'), nullable=False)
+    user_id = Column(Integer, ForeignKey('user.id'), nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, onupdate=datetime.utcnow)
+
+    
+    # Relationships
+    role = relationship("Role", backref=backref("user_roles", cascade="all, delete-orphan"))
+    user = relationship("User", backref=backref("user_roles", cascade="all, delete-orphan"))
