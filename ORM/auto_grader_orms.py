@@ -1,3 +1,5 @@
+from typing import List
+from pydantic import BaseModel
 from sqlalchemy.types import Enum as SQLAlchemyEnum
 from enum import Enum as PyEnum
 from sqlalchemy import Boolean, Text, create_engine, Column, Integer, String, ForeignKey, DateTime
@@ -6,6 +8,8 @@ from sqlalchemy.orm import relationship, sessionmaker, backref
 from datetime import datetime
 import bcrypt
 import os
+
+from ORM.role_constants import Roles
 
 pwd = os.getenv('SQL_DB_PWD')
 db_ip = os.getenv('DB_IP')
@@ -62,6 +66,40 @@ class Language(PyEnum):
     HINDI = "Hindi"
     KANNADA = "Kannada"
 
+class UserModel(BaseModel):
+    is_logged_in: bool
+    username: str
+    rolenames: List[Roles]
+    profile_unfilled: bool
+
+class EnumValue(BaseModel):
+    name: str
+    value: str
+
+class QuestionData(BaseModel):
+    question_text: str
+    choices: dict
+    correct_choice_label: str
+    question_paper_id: int
+
+class QuestionPaperData(BaseModel):
+    topic: Topic
+    name: str
+    grade: int
+    board: Board
+
+class QuestionDataUpdate(BaseModel):
+    question_text: str
+    choices: dict
+    correct_choice_id: str
+
+class UserQuestionPaperData(BaseModel):
+    question_paper_id: int
+    understanding_level: UnderstandingLevel
+    tone: Tone
+
+def enum_to_model(enum):
+    return [EnumValue(name=item.name, value=item.value) for item in enum]
 
 class User(Base):
     __tablename__ = 'user'

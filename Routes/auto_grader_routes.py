@@ -5,13 +5,10 @@ from grpc import Status
 from llama_index.llms import OpenAI
 from sqlalchemy import asc
 from sqlalchemy.orm import Session
-from fastapi import APIRouter, Depends, HTTPException, Response, UploadFile
-from ORM.auto_grader_orms import FeedbackLength,UnderstandingLevel, MarkingScheme, Question, QuestionChoice, QuestionPaper, SessionLocal, Tone, User, UserQuestionAnswer, UserQuestionPaper
+from fastapi import APIRouter, Depends, HTTPException, Response
+from ORM.auto_grader_orms import Board, FeedbackLength, QuestionData, QuestionDataUpdate, QuestionPaperData, Topic,UnderstandingLevel, MarkingScheme, Question, QuestionChoice, QuestionPaper, SessionLocal, Tone, User, UserQuestionAnswer, UserQuestionPaper, UserQuestionPaperData, enum_to_model
 from llama_index.llms.llm import stream_chat_response_to_tokens
-from llama_index.llms import ChatMessage
 from fastapi.responses import StreamingResponse
-from llama_index import ServiceContext
-from llama_index.response_synthesizers.tree_summarize import TreeSummarize
 from fastapi import Body
 from typing import Dict
 from ORM.populate_tables import State, create_ques_and_ques_choices, add_question_paper
@@ -173,18 +170,19 @@ def post_test_next_steps(user_question_paper_id: int, next_steps):
 def question_papers(_user=Depends(current_user)):
     db = SessionLocal()
     question_papers = db.query(QuestionPaper).filter(QuestionPaper.state == State.COMPLETED.value).all()
+    result = [{"name": qp.name, "id": qp.id} for qp in question_papers]
     db.close()
-    return question_papers
+    return result
 
 @router.post("/user_question_papers")
-def create_user_question_paper(question_paper_id: int, understanding_level: UnderstandingLevel, tone: Tone, feedback_length = FeedbackLength.ELABORATE.value, user=Depends(current_user)):
+def create_user_question_paper(form_data: UserQuestionPaperData, user=Depends(current_user)):
     user_id = user.id
     db = SessionLocal()
-    user_question_paper = UserQuestionPaper(user_id=user_id, question_paper_id = question_paper_id, score = 0, understanding_level = understanding_level, tone = tone, feedback_length = feedback_length)
+    user_question_paper = UserQuestionPaper(user_id=user_id, question_paper_id = form_data.question_paper_id, score = 0, understanding_level = form_data.understanding_level, tone = form_data.tone, feedback_length = FeedbackLength.ELABORATE.value)
     db.add(user_question_paper)
     db.commit()
     user_question_paper_id = user_question_paper.id
-    num_questions = db.query(Question).filter(Question.question_paper_id == question_paper_id).count()
+    num_questions = db.query(Question).filter(Question.question_paper_id == form_data.question_paper_id).count()
     db.close()
     return {"user_question_paper_id": user_question_paper_id, "num_questions": num_questions}
 
@@ -194,14 +192,14 @@ def get_questions_for_paper(question_paper_id: int, page_number: int = 1,  page_
     offset_val = (page_number - 1) * page_size
 
     db = SessionLocal()
-    question_list = []
+    question_list = {}
     question = db.query(Question).filter(Question.question_paper_id == question_paper_id).order_by(asc(Question.id)).limit(page_size).offset(offset_val).first()
     if question:
+        question_list["text"] = question.question_text
+        question_list["id"] = question.id
+
         question_choices = db.query(QuestionChoice).filter(QuestionChoice.question == question).all()
-        question_list = [(question.question_text, question.id), [(question_choice.choice_text, question_choice.id, question_choice.label) for question_choice in question_choices]]
-        marking_scheme = db.query(MarkingScheme).filter(MarkingScheme.question_id == question.id).first()
-        if marking_scheme:
-            question_list.append(marking_scheme.question_choice.label)
+        question_list["choices"] = [{"text": question_choice.choice_text,"id": question_choice.id, "label": question_choice.label} for question_choice in question_choices]
 
     db.close()
     return question_list
@@ -222,13 +220,31 @@ def get_questions_for_paper(question_paper_id: int):
     db.close()
     return result
 
+@router.get("/question/{question_id}")
+def get_question(question_id: int):
+    db = SessionLocal()
+    result = {}
+
+    question = db.query(Question).filter(Question.id == question_id).first()
+    result["question_text"] = question.question_text
+
+    question_choices = db.query(QuestionChoice).filter(QuestionChoice.question == question).all()
+    result["question_choices"] = [{"text":question_choice.choice_text, "id": question_choice.id, "label": question_choice.label} for question_choice in question_choices]
+    
+    marking_scheme = db.query(MarkingScheme).filter(MarkingScheme.question_id == question.id).first()
+    if marking_scheme:
+        result["correct_choice_id"] = marking_scheme.correct_question_choice_id
+
+    db.close()
+    return result
+
 @router.post("/question_paper")
-def create_question_paper(form_data: Dict = Body(...)):
+def create_question_paper(form_data: QuestionPaperData):
     question_paper_id = add_question_paper(form_data)
     return question_paper_id
 
 @router.post("/question")
-def create_question(form_data: Dict = Body(...)):
+def create_question(form_data: QuestionData):
     create_ques_and_ques_choices(form_data)
 
 @router.get("/tests")
@@ -269,29 +285,29 @@ def delete_question(question_id: int):
     return True
 
 @router.put("/questions/{question_id}")
-def update_question(question_id: int, form_data: Dict):
+def update_question(question_id: int, form_data: QuestionDataUpdate):
     db = SessionLocal()
-    selected_option_id = form_data["selected_option"]
+    correct_choice_id = form_data.correct_choice_id
 
     question = db.query(Question).filter(Question.id == question_id).first()
     if not question:
         raise HTTPException(status_code=404, detail="Question not found")
-    if question.question_text != form_data["question_text"]:
-        setattr(question, "question_text", form_data["question_text"])
+    if question.question_text != form_data.question_text:
+        setattr(question, "question_text", form_data.question_text)
     
     marking_scheme = db.query(MarkingScheme).filter(MarkingScheme.question_id == question_id).first()
     if not marking_scheme:
         raise HTTPException(status_code=404, detail="Marking Scheme not found")
     
-    for label, choice_text in form_data["choices"].items():
+    for label, choice_text in form_data.choices.items():
         choice = db.query(QuestionChoice).filter(QuestionChoice.label == label, QuestionChoice.question_id == question.id).first()
         if not choice:
             raise HTTPException(status_code=404, detail=f"Choice with label {label} not found")
         if choice.choice_text != choice_text:
             setattr(choice, "choice_text", choice_text)
 
-    if marking_scheme.correct_question_choice_id != selected_option_id:
-        setattr(marking_scheme, "correct_question_choice_id", selected_option_id)
+    if marking_scheme.correct_question_choice_id != correct_choice_id:
+        setattr(marking_scheme, "correct_question_choice_id", correct_choice_id)
 
     db.commit()
     db.close()
@@ -311,6 +327,20 @@ def generate_latex(text):
     response = llm.complete(prompt)
     return response
 
+@router.get("/generate_latex_react")
+def generate_latex_react(text):
+    prompt = f"""
+    text: {text}
+
+    --------------------------------------------------------
+    Please identify any LaTeX compatible components in the following text and convert them into their corresponding LaTeX code, enclosed in '<InlineMath>'. Also since JSX treats backslashes (\) as escape characters please use double backslashes (\\) to represent a single backslash in your LaTeX. Ensure that the original wording and structure of the text remain unchanged. Begin your response directly with the converted text, omitting any introductory phrases or explanations. The response should consist solely of the original text with the LaTeX compatible components replaced by their LaTeX code.
+    """
+
+    llm = OpenAI(model="gpt-4", temperature = 0)
+
+    response = llm.complete(prompt)
+    return response
+
 @router.get("/show_next_steps")
 def show_next_steps(user_question_paper_id: int):
     db = SessionLocal()
@@ -320,3 +350,11 @@ def show_next_steps(user_question_paper_id: int):
     if user_question_paper_next_steps:
         return True
     return False
+
+@router.get("/get_qp_enums")
+def get_qp_enums():
+    return {"topics": enum_to_model(Topic), "boards": enum_to_model(Board)}
+
+@router.get("/get_test_enums")
+def get_test_enums():
+    return {"understanding_levels": enum_to_model(UnderstandingLevel), "tones": enum_to_model(Tone)}
