@@ -86,7 +86,6 @@ GitPython==3.1.43
 googleapis-common-protos==1.56.2
 gptcache==0.1.43
 greenlet==3.0.3
-grpcio==1.63.0
 guidance==0.1.14
 h11==0.14.0
 h2==4.1.0
