@@ -250,7 +250,7 @@ protobuf==5.26.1
 psutil==5.9.8
 ptyprocess==0.7.0
 pure-eval==0.2.2
-pyaml==24.4.0
+pyaml==23.9.7
 pyarrow==16.0.0
 pyarrow-hotfix==0.6
 pyasn1==0.6.0
