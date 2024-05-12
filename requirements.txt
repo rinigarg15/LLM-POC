@@ -87,7 +87,7 @@ google-api-python-client==2.129.0
 google-auth==2.29.0
 google-auth-httplib2==0.2.0
 google-auth-oauthlib==1.2.0
-googleapis-common-protos==1.56.1
+googleapis-common-protos==1.56.2
 gptcache==0.1.43
 greenlet==3.0.3
 grpcio==1.63.0
