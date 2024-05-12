@@ -243,7 +243,6 @@ portalocker==2.8.2
 posthog==3.5.0
 prometheus_client==0.20.0
 prompt-toolkit==3.0.43
-proto-plus==1.23.0
 protobuf==5.26.1
 psutil==5.9.8
 ptyprocess==0.7.0
