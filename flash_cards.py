@@ -1,7 +1,7 @@
 import json
-from llama_index.program.openai_program import OpenAIPydanticProgram
+from llama_index.legacy.program.openai_program import OpenAIPydanticProgram
 from pydantic import BaseModel
-from llama_index.llms import OpenAI
+from llama_index.legacy.llms import OpenAI
 
 class FlashCard(BaseModel):
     """A Flash-Card."""

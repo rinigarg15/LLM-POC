@@ -1,23 +1,23 @@
 import io
 import json
 import os
-from llama_index.llms import OpenAI
+from llama_index.legacy.llms import OpenAI
 from sqlalchemy import asc
 from sqlalchemy.orm import Session
 from fastapi import APIRouter, Depends, HTTPException, Response, UploadFile
 from fastapi.security import OAuth2PasswordRequestForm
 from fastapi_login import LoginManager
 from ORM.auto_grader_orms import FeedbackLength,UnderstandingLevel, MarkingScheme, Question, QuestionChoice, QuestionPaper, SessionLocal, Tone, User, UserQuestionAnswer, UserQuestionPaper
-from llama_index.llms.llm import stream_completion_response_to_tokens, stream_chat_response_to_tokens
-from llama_index.llms import ChatMessage
+from llama_index.legacy.llms.llm import stream_completion_response_to_tokens, stream_chat_response_to_tokens
+from llama_index.legacy.llms import ChatMessage
 from fastapi.responses import StreamingResponse
-from llama_index import ServiceContext
-from llama_index.response_synthesizers.tree_summarize import TreeSummarize
+from llama_index.legacy import ServiceContext
+from llama_index.legacy.response_synthesizers.tree_summarize import TreeSummarize
 from fastapi import Body
 from typing import Dict
 from ORM.populate_tables import State, create_ques_and_ques_choices, add_question_paper
 import tiktoken
-from llama_index.callbacks import CallbackManager, TokenCountingHandler
+from llama_index.legacy.callbacks import CallbackManager, TokenCountingHandler
 from cachetools import cached, TTLCache
 
 router = APIRouter()
