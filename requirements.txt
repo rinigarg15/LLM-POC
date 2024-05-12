@@ -83,10 +83,6 @@ frozenlist==1.4.1
 fsspec==2024.3.1
 gitdb==4.0.11
 GitPython==3.1.43
-google-api-python-client==2.129.0
-google-auth==2.29.0
-google-auth-httplib2==0.2.0
-google-auth-oauthlib==1.2.0
 googleapis-common-protos==1.56.2
 gptcache==0.1.43
 greenlet==3.0.3
@@ -140,7 +136,6 @@ jupyterlab_server==2.27.1
 jupyterlab_widgets==3.0.10
 kaggle==1.6.12
 kiwisolver==1.4.5
-kubernetes==29.0.0
 langdetect==1.0.9
 langsmith==0.1.57
 layoutparser==0.3.4
