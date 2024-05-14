@@ -5,7 +5,7 @@ import pickle
 from pathlib import Path
 from typing import Any, Dict, Optional
 
-from llama_index.core import VectorStoreIndex
+from llama_index.core.indices.vector_store.base import VectorStoreIndex
 from llama_index.core.llama_pack.base import BaseLlamaPack
 from llama_index.core.node_parser import UnstructuredElementNodeParser
 from llama_index.core.query_engine import RetrieverQueryEngine
