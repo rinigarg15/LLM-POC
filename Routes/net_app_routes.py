@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Response
-from llama_index.packs.recursive_retriever import EmbeddedTablesUnstructuredRetrieverPack
 from fastapi.responses import StreamingResponse
+from packs.embedded import EmbeddedTablesUnstructuredRetrieverPack
 import os
 
 
