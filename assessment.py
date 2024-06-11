@@ -1,9 +1,9 @@
-from llama_index.llms import OpenAI
-from llama_index.program.openai_program import OpenAIPydanticProgram
+from llama_index.legacy.llms import OpenAI
+from llama_index.legacy.program.openai_program import OpenAIPydanticProgram
 from pydantic import BaseModel
 from sentence_transformers import CrossEncoder
-from llama_index.embeddings import OpenAIEmbedding
-from llama_index.embeddings.base import similarity
+from llama_index.legacy.embeddings import OpenAIEmbedding
+from llama_index.legacy.embeddings.base import similarity
 
 class SimilarityScore(BaseModel):
     """Get similarity score between student_answer and correct_answer"""

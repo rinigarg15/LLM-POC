@@ -1,17 +1,24 @@
 import io
 import json
 import os
-from grpc import Status
-from llama_index.llms import OpenAI
+
+from llama_index.legacy.llms import OpenAI
 from sqlalchemy import asc
 from sqlalchemy.orm import Session
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, Depends, HTTPException, Response, UploadFile
+from fastapi.security import OAuth2PasswordRequestForm
+from fastapi_login import LoginManager
 from ORM.auto_grader_orms import Board, FeedbackLength, QuestionData, QuestionDataUpdate, QuestionPaperData, Topic,UnderstandingLevel, MarkingScheme, Question, QuestionChoice, QuestionPaper, SessionLocal, Tone, User, UserQuestionAnswer, UserQuestionPaper, UserQuestionPaperData, enum_to_model
-from llama_index.llms.llm import stream_chat_response_to_tokens
+from llama_index.legacy.llms.llm import stream_completion_response_to_tokens, stream_chat_response_to_tokens
+from llama_index.legacy.llms import ChatMessage
 from fastapi.responses import StreamingResponse
+from llama_index.legacy import ServiceContext
+from llama_index.legacy.response_synthesizers.tree_summarize import TreeSummarize
 from fastapi import Body
 from typing import Dict
 from ORM.populate_tables import State, create_ques_and_ques_choices, add_question_paper
+import tiktoken
+from llama_index.legacy.callbacks import CallbackManager, TokenCountingHandler
 from cachetools import cached, TTLCache
 from Routes.auto_grader_auth_routes import current_user
 from Routes.llm_methods import assessment_llm, generate_answer_feedback, generate_next_steps, next_steps_llm
