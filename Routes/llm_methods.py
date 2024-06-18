@@ -1,10 +1,10 @@
-from llama_index.llms import OpenAI
+from llama_index.legacy.llms import OpenAI
 from ORM.auto_grader_orms import SessionLocal, UserQuestionAnswer
-from llama_index.llms.llm import stream_chat_response_to_tokens
-from llama_index.llms import ChatMessage
+from llama_index.legacy.llms.llm import stream_chat_response_to_tokens
+from llama_index.legacy.llms import ChatMessage
 from fastapi.responses import StreamingResponse
-from llama_index import ServiceContext
-from llama_index.response_synthesizers.tree_summarize import TreeSummarize
+from llama_index.legacy import ServiceContext
+from llama_index.legacy.response_synthesizers.tree_summarize import TreeSummarize
 
 def generate_answer_feedback(correct_answer_text, student_answer_text, question, user_question_paper, db):
     grade =  {question.question_paper.grade}
